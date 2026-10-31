@@ -49,7 +49,59 @@ aider
 
 ---
 
-## 3. Integrating with Cline (VS Code Extension)
+## 3. Integrating with OpenCode (`opencode.ai`)
+
+[OpenCode](https://opencode.ai/) is an autonomous AI coding agent and developer tool. You can configure OpenCode to connect to `colab-agent-bridge` via its `@ai-sdk/openai-compatible` provider in `~/.config/opencode/opencode.json`.
+
+### Configuration Block (`~/.config/opencode/opencode.json`)
+
+Add the `"colab"` provider under `"provider"`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "colab": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Google Colab (Bridge)",
+      "options": {
+        "baseURL": "http://localhost:8000/v1",
+        "apiKey": "colab",
+        "timeout": 600000
+      },
+      "models": {
+        "default": {
+          "name": "Colab Active Model",
+          "tool_call": true,
+          "reasoning": false,
+          "attachment": false,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "qwen2.5-coder-7b": {
+          "name": "Qwen 2.5 Coder 7B (Colab)",
+          "tool_call": true,
+          "reasoning": false,
+          "attachment": false,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "qwen2.5-coder-32b": {
+          "name": "Qwen 2.5 Coder 32B (Colab)",
+          "tool_call": true,
+          "reasoning": false,
+          "attachment": false,
+          "limit": { "context": 32768, "output": 8192 }
+        }
+      }
+    }
+  }
+}
+```
+
+Then reload OpenCode with `opencode reload` or select `colab/default` directly from your OpenCode models picker.
+
+---
+
+## 4. Integrating with Cline (VS Code Extension)
 
 [Cline](https://github.com/cline/cline) is an autonomous coding agent for Visual Studio Code capable of editing files, executing shell commands, and managing git branches.
 
