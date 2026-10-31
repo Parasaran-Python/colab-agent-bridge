@@ -1,0 +1,33 @@
+import os
+import shutil
+from dataclasses import dataclass
+
+DEFAULT_SDK_COLAB = "/run/media/parasaran/Dev/SDK/python/install/bin/colab"
+
+@dataclass
+class BridgeConfig:
+    colab_cli_path: str
+    default_port: int = 8000
+    default_backend: str = "vllm"
+    default_gpu: str = "T4"
+    auth_strategy: str = "adc"
+
+def resolve_colab_binary() -> str:
+    env_path = os.getenv("COLAB_CLI_PATH")
+    if env_path:
+        return env_path
+    if os.path.exists(DEFAULT_SDK_COLAB):
+        return DEFAULT_SDK_COLAB
+    which_path = shutil.which("colab")
+    if which_path:
+        return which_path
+    return "colab"
+
+def get_config() -> BridgeConfig:
+    return BridgeConfig(
+        colab_cli_path=resolve_colab_binary(),
+        default_port=int(os.getenv("COLAB_BRIDGE_PORT", "8000")),
+        default_backend=os.getenv("COLAB_DEFAULT_BACKEND", "vllm"),
+        default_gpu=os.getenv("COLAB_DEFAULT_GPU", "T4"),
+        auth_strategy=os.getenv("COLAB_AUTH_STRATEGY", "adc")
+    )
