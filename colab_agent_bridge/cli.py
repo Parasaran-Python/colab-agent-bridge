@@ -115,6 +115,10 @@ def up(
         )
     except Exception as e:
         console.print(f"[bold red]Deployment failed:[/bold red] {e}")
+        console.print(
+            f"[yellow]Note: Session '{session}' may still be active on Colab.\n"
+            f"Run 'colab-bridge down -s {session}' to release compute units.[/yellow]"
+        )
         raise typer.Exit(code=1)
 
 

@@ -104,6 +104,22 @@ def test_colab_bridge_deploy_session_failure():
         bridge.deploy(model_name="test-model")
 
 
+def test_colab_bridge_deploy_install_failure():
+    bridge = ColabBridge(session_name="fail-install-bridge", gpu="T4")
+    bridge.session_mgr.new_session = MagicMock(
+        return_value={"success": True, "stdout": "VM ready"}
+    )
+    bridge.executor.run_code = MagicMock(
+        return_value={"success": False, "stderr": "pip install failed: out of disk space", "stdout": ""}
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Backend installation failed on Colab VM: pip install failed: out of disk space",
+    ):
+        bridge.deploy(model_name="test-model")
+
+
 def test_colab_bridge_teardown():
     bridge = ColabBridge(session_name="teardown-bridge")
     mock_tunnel = MagicMock()

@@ -33,6 +33,7 @@ def test_ssh_tunnel_command_generation():
 @patch("time.sleep", return_value=None)
 def test_ssh_tunnel_start(mock_sleep, mock_popen):
     mock_process = MagicMock()
+    mock_process.poll.return_value = None
     mock_popen.return_value = mock_process
 
     tunnel = SSHTunnel(session_name="test-session", local_port=8888, remote_port=8000)
@@ -42,6 +43,23 @@ def test_ssh_tunnel_start(mock_sleep, mock_popen):
     mock_popen.assert_called_once()
     mock_sleep.assert_called_once_with(2)
     assert tunnel.process is mock_process
+
+
+@patch("subprocess.Popen")
+@patch("time.sleep", return_value=None)
+def test_ssh_tunnel_start_early_exit_failure(mock_sleep, mock_popen):
+    mock_process = MagicMock()
+    mock_process.poll.return_value = 255
+    mock_process.returncode = 255
+    mock_process.stderr.read.return_value = b"Host key verification failed\n"
+    mock_popen.return_value = mock_process
+
+    tunnel = SSHTunnel(session_name="test-session", local_port=8888, remote_port=8000)
+    with pytest.raises(
+        RuntimeError,
+        match=r"SSH tunnel process exited immediately \(code 255\): Host key verification failed",
+    ):
+        tunnel.start()
 
 
 def test_ssh_tunnel_stop_graceful():

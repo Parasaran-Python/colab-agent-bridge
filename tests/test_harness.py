@@ -52,6 +52,11 @@ def test_check_health_success():
         assert res["data"] == {"object": "list", "data": [{"id": "test-model"}]}
         mock_get.assert_called_with("http://localhost:8000/v1/models", timeout=3)
 
+        # Verify URL normalization without /v1
+        res2 = check_health("http://localhost:8000", timeout_seconds=5, poll_interval=1)
+        assert res2["ready"] is True
+        mock_get.assert_called_with("http://localhost:8000/v1/models", timeout=3)
+
 
 def test_check_health_timeout():
     with patch("requests.get", side_effect=requests.RequestException("Connection refused")):
@@ -66,6 +71,10 @@ def test_keepalive_ping_success():
     mock_resp.status_code = 200
     with patch("requests.get", return_value=mock_resp) as mock_get:
         assert keepalive_ping("http://localhost:8000/v1") is True
+        mock_get.assert_called_with("http://localhost:8000/v1/models", timeout=5)
+
+        # Verify URL normalization without /v1
+        assert keepalive_ping("http://localhost:8000") is True
         mock_get.assert_called_with("http://localhost:8000/v1/models", timeout=5)
 
 

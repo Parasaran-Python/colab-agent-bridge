@@ -5,7 +5,10 @@ import requests
 
 def check_health(endpoint_url: str, timeout_seconds: int = 600, poll_interval: int = 5) -> Dict[str, Any]:
     """Polls the /models or /health endpoint until the server is ready or timeout expires."""
-    models_url = endpoint_url.rstrip("/") + "/models"
+    url = endpoint_url.rstrip("/")
+    if not url.endswith("/v1"):
+        url = url + "/v1"
+    models_url = url + "/models"
     start_time = time.time()
 
     while time.time() - start_time < timeout_seconds:
@@ -23,7 +26,10 @@ def check_health(endpoint_url: str, timeout_seconds: int = 600, poll_interval: i
 def keepalive_ping(endpoint_url: str) -> bool:
     """Lightweight ping to prevent idle shutdown."""
     try:
-        resp = requests.get(endpoint_url.rstrip("/") + "/models", timeout=5)
+        url = endpoint_url.rstrip("/")
+        if not url.endswith("/v1"):
+            url = url + "/v1"
+        resp = requests.get(url + "/models", timeout=5)
         return resp.status_code == 200
     except Exception:
         return False

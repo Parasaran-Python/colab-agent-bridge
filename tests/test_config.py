@@ -2,12 +2,14 @@ import os
 from colab_agent_bridge.config import get_config, BridgeConfig, resolve_colab_binary
 
 def test_default_config(monkeypatch):
-    monkeypatch.delenv("COLAB_CLI_PATH", raising=False)
-    monkeypatch.delenv("COLAB_BRIDGE_PORT", raising=False)
+    for key in list(os.environ.keys()):
+        if key.startswith("COLAB_"):
+            monkeypatch.delenv(key, raising=False)
     config = get_config()
     assert isinstance(config, BridgeConfig)
     assert config.default_port == 8000
     assert config.default_backend == "vllm"
+    assert config.default_gpu == "T4"
     assert config.auth_strategy == "adc"
 
 def test_env_override_config(monkeypatch):

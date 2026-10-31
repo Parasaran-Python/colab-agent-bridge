@@ -128,6 +128,7 @@ def test_cli_up_failure():
         result = runner.invoke(app, ["up", "Qwen/Qwen2.5-Coder-7B-Instruct"])
         assert result.exit_code == 1
         assert "Deployment failed" in result.stdout
+        assert "colab-bridge down -s agent-bridge" in result.stdout
 
 
 def test_cli_test_endpoint_success():

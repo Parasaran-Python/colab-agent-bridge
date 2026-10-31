@@ -38,6 +38,14 @@ class SSHTunnel(BaseTunnel):
         cmd = self.build_ssh_command()
         self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(2)
+        if self.process.poll() is not None:
+            stderr = ""
+            if self.process.stderr:
+                err = self.process.stderr.read()
+                stderr = err.decode("utf-8", errors="replace") if isinstance(err, bytes) else str(err)
+            raise RuntimeError(
+                f"SSH tunnel process exited immediately (code {self.process.returncode}): {stderr.strip()}"
+            )
         return f"http://localhost:{self.local_port}/v1"
 
     def stop(self) -> None:
