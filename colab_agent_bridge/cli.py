@@ -130,9 +130,12 @@ def down(
     config = get_config()
     mgr = SessionManager(config)
     console.print(f"[yellow]Terminating session {session}...[/yellow]")
+    from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
+    SSHTunnel.cleanup_session_tunnels(session)
+
     res = mgr.stop_session(session)
     if res["success"]:
-        console.print(f"[green]✔ Session {session} successfully released.[/green]")
+        console.print(f"[green]✔ Session {session} successfully released and associated tunnels terminated.[/green]")
     else:
         console.print(f"[red]Error stopping session:[/red] {res['stderr']}")
         raise typer.Exit(code=1)

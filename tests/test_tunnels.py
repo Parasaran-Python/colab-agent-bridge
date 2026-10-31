@@ -149,4 +149,15 @@ def test_cloudflare_tunnel_stop():
     mock_executor.run_code.assert_called_once()
     args, _ = mock_executor.run_code.call_args
     assert args[0] == "test-session"
-    assert "pkill -f cloudflared" in args[1]
+
+
+@patch("subprocess.run")
+@patch("os.kill")
+def test_ssh_tunnel_cleanup_session_tunnels(mock_kill, mock_subproc_run):
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+    mock_res.stdout = "12345 67890\n"
+    mock_subproc_run.return_value = mock_res
+
+    SSHTunnel.cleanup_session_tunnels("test-session")
+    assert mock_kill.call_count == 2

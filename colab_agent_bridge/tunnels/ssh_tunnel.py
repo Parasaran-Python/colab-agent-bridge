@@ -61,3 +61,25 @@ class SSHTunnel(BaseTunnel):
                 self.process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+
+    @classmethod
+    def cleanup_session_tunnels(cls, session_name: str) -> None:
+        """Find and terminate any local SSH or ProxyCommand tunnel processes associated with the session."""
+        import os
+        import signal
+        try:
+            res = subprocess.run(
+                ["pgrep", "-f", f"-s {session_name}"],
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                for pid_str in res.stdout.strip().split():
+                    try:
+                        pid = int(pid_str)
+                        if pid != os.getpid():
+                            os.kill(pid, signal.SIGTERM)
+                    except (ValueError, ProcessLookupError, PermissionError):
+                        pass
+        except Exception:
+            pass
