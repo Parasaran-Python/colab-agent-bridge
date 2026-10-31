@@ -42,7 +42,7 @@ def test_session_manager_tpu_construction():
 def test_session_manager_default_config():
     mgr = SessionManager()
     assert mgr.config is not None
-    assert mgr.config.auth_strategy == "adc"
+    assert mgr.config.auth_strategy in ("adc", "oauth2")
 
 
 def test_verify_auth_success():

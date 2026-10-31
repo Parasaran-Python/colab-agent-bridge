@@ -23,11 +23,20 @@ def resolve_colab_binary() -> str:
         return which_path
     return "colab"
 
+def resolve_auth_strategy() -> str:
+    env_strat = os.getenv("COLAB_AUTH_STRATEGY")
+    if env_strat:
+        return env_strat
+    token_path = os.path.expanduser("~/.config/colab-cli/token.json")
+    if os.path.exists(token_path):
+        return "oauth2"
+    return "adc"
+
 def get_config() -> BridgeConfig:
     return BridgeConfig(
         colab_cli_path=resolve_colab_binary(),
         default_port=int(os.getenv("COLAB_BRIDGE_PORT", "8000")),
         default_backend=os.getenv("COLAB_DEFAULT_BACKEND", "vllm"),
         default_gpu=os.getenv("COLAB_DEFAULT_GPU", "T4"),
-        auth_strategy=os.getenv("COLAB_AUTH_STRATEGY", "adc")
+        auth_strategy=resolve_auth_strategy()
     )

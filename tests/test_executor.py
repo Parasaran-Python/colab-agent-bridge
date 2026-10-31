@@ -76,4 +76,4 @@ def test_executor_install_packages():
 def test_executor_default_config():
     executor = RemoteExecutor()
     assert executor.config is not None
-    assert executor.config.auth_strategy == "adc"
+    assert executor.config.auth_strategy in ("adc", "oauth2")

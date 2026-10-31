@@ -5,12 +5,23 @@ def test_default_config(monkeypatch):
     for key in list(os.environ.keys()):
         if key.startswith("COLAB_"):
             monkeypatch.delenv(key, raising=False)
+    # When token.json does not exist, defaults to adc
+    monkeypatch.setattr("os.path.exists", lambda path: False)
     config = get_config()
     assert isinstance(config, BridgeConfig)
     assert config.default_port == 8000
     assert config.default_backend == "vllm"
     assert config.default_gpu == "T4"
     assert config.auth_strategy == "adc"
+
+def test_default_config_oauth2_detected(monkeypatch):
+    for key in list(os.environ.keys()):
+        if key.startswith("COLAB_"):
+            monkeypatch.delenv(key, raising=False)
+    # When token.json exists, auto-detects oauth2
+    monkeypatch.setattr("os.path.exists", lambda path: True if "token.json" in path else False)
+    config = get_config()
+    assert config.auth_strategy == "oauth2"
 
 def test_env_override_config(monkeypatch):
     monkeypatch.setenv("COLAB_CLI_PATH", "/custom/bin/colab")

@@ -43,6 +43,13 @@ class ColabBridge:
         return self.endpoint_url
 
     def deploy(self, model_name: str, wait_for_ready: bool = True, timeout: int = 600) -> Dict[str, Any]:
+        # 0. Pre-flight auth check & auto-resolution
+        auth_info = self.session_mgr.verify_auth()
+        if not auth_info.get("authenticated"):
+            raise RuntimeError(
+                f"Colab CLI authentication failed: {auth_info.get('error')}\n{auth_info.get('remediation')}"
+            )
+
         # 1. Provision session
         sess_res = self.session_mgr.new_session(
             session_name=self.session_name,
