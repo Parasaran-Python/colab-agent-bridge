@@ -38,9 +38,12 @@ def test_colab_bridge_custom_init():
     assert bridge.local_port == 9000
 
 
+@patch("colab_agent_bridge.client.bridge.start_adapter_server")
 @patch("colab_agent_bridge.client.bridge.check_health")
 @patch("colab_agent_bridge.client.bridge.SSHTunnel")
-def test_colab_bridge_deploy_ssh_success(mock_ssh_cls, mock_health):
+def test_colab_bridge_deploy_ssh_success(mock_ssh_cls, mock_health, mock_adapter):
+    mock_server = MagicMock()
+    mock_adapter.return_value = mock_server
     mock_tunnel = MagicMock()
     mock_tunnel.start.return_value = "http://localhost:8000/v1"
     mock_ssh_cls.return_value = mock_tunnel

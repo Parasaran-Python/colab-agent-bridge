@@ -9,6 +9,7 @@ from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
 from colab_agent_bridge.tunnels.cloudflare import CloudflareTunnel
 from colab_agent_bridge.client.health import check_health, keepalive_ping
 from colab_agent_bridge.client.harness import generate_agent_config
+from colab_agent_bridge.adapter import start_adapter_server
 
 
 class ColabBridge:
@@ -35,6 +36,7 @@ class ColabBridge:
         self.session_mgr = SessionManager(self.config)
         self.executor = RemoteExecutor(self.config)
         self.tunnel = None
+        self.adapter_server = None
         self.endpoint_url: Optional[str] = None
         self._keepalive_active = False
         self._keepalive_thread: Optional[threading.Thread] = None
@@ -73,18 +75,23 @@ class ColabBridge:
         start_script = backend.generate_start_script(model_name=model_name, port=8000)
         self.executor.run_code(self.session_name, start_script)
 
-        # 4. Open tunnel
+        # 4. Open tunnel and smart adapter
         if self.tunnel_type == "cloudflare":
             self.tunnel = CloudflareTunnel(self.session_name, remote_port=8000, config=self.config)
             self.endpoint_url = self.tunnel.start()
         else:
+            tunnel_port = self.local_port + 1000
             self.tunnel = SSHTunnel(
                 self.session_name,
-                local_port=self.local_port,
+                local_port=tunnel_port,
                 remote_port=8000,
                 config=self.config,
             )
-            self.endpoint_url = self.tunnel.start()
+            self.tunnel.start()
+            self.adapter_server = start_adapter_server(
+                listen_port=self.local_port, target_port=tunnel_port
+            )
+            self.endpoint_url = f"http://localhost:{self.local_port}/v1"
 
         # 5. Wait for readiness
         health_info = {"ready": True}
@@ -117,6 +124,12 @@ class ColabBridge:
 
     def teardown(self) -> Dict[str, Any]:
         self._keepalive_active = False
+        if self.adapter_server:
+            try:
+                self.adapter_server.shutdown()
+                self.adapter_server.server_close()
+            except Exception:
+                pass
         if self.tunnel:
             self.tunnel.stop()
         return self.session_mgr.stop_session(self.session_name)
