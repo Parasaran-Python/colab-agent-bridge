@@ -234,3 +234,62 @@ def test_extract_unfenced_json_tool_calls():
     assert len(tool_calls) == 1
     assert tool_calls[0]["function"]["name"] == "tool_x"
 
+
+def test_proxy_strips_disallowed_tools():
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+    import urllib.request
+    from colab_agent_bridge.adapter import start_adapter_server
+
+    captured_request = {}
+
+    class MockUpstreamHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_POST(self):
+            content_len = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_len)
+            captured_request["body"] = json.loads(body.decode("utf-8"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"choices": [{"message": {"role": "assistant", "content": "ok"}}]}')
+
+    upstream_server = HTTPServer(("127.0.0.1", 19133), MockUpstreamHandler)
+    upstream_thread = threading.Thread(target=upstream_server.serve_forever, daemon=True)
+    upstream_thread.start()
+
+    adapter_server = start_adapter_server(listen_port=19134, target_port=19133)
+
+    try:
+        payload = {
+            "messages": [],
+            "tools": [
+                {"type": "function", "function": {"name": "skill", "parameters": {}}},
+                {"type": "function", "function": {"name": "subagent", "parameters": {}}},
+                {"type": "function", "function": {"name": "write", "parameters": {}}},
+            ],
+        }
+        req = urllib.request.Request(
+            "http://127.0.0.1:19134/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            _ = resp.read()
+
+        assert "body" in captured_request
+        tools = captured_request["body"].get("tools", [])
+        tool_names = [t["function"]["name"] for t in tools]
+        assert "skill" not in tool_names
+        assert "subagent" not in tool_names
+        assert "write" in tool_names
+    finally:
+        adapter_server.shutdown()
+        adapter_server.server_close()
+        upstream_server.shutdown()
+        upstream_server.server_close()
+
+

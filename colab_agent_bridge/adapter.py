@@ -31,6 +31,9 @@ def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
     }
 
 
+DISALLOWED_TOOLS = {"skill", "subagent", "question"}
+
+
 def _is_tool_dict(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
@@ -287,7 +290,23 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                 if req_json.get("stream") is True:
                     client_wants_stream = True
                     req_json["stream"] = False
-                    forward_body = json.dumps(req_json).encode("utf-8")
+
+                # Strip disorienting or prohibited tools so model never hallucinates calling them
+                if "tools" in req_json and isinstance(req_json["tools"], list):
+                    filtered_tools = []
+                    for t in req_json["tools"]:
+                        tname = ""
+                        if isinstance(t, dict):
+                            fn = t.get("function")
+                            if isinstance(fn, dict):
+                                tname = fn.get("name", "")
+                            elif "name" in t:
+                                tname = t.get("name", "")
+                        if tname.lower() not in DISALLOWED_TOOLS:
+                            filtered_tools.append(t)
+                    req_json["tools"] = filtered_tools
+
+                forward_body = json.dumps(req_json).encode("utf-8")
             except Exception:
                 pass
 
