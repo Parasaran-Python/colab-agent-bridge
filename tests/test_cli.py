@@ -23,6 +23,13 @@ def test_cli_recommend():
     assert "Quantization required" in result.stdout or "True" in result.stdout
 
 
+def test_cli_recommend_invalid_accelerator():
+    result = runner.invoke(app, ["recommend", "Qwen/Qwen2.5-Coder-7B-Instruct", "--gpu", "INVALID_GPU"])
+    assert result.exit_code == 1
+    assert "Recommendation error" in result.stdout
+    assert "Unsupported accelerator" in result.stdout
+
+
 def test_cli_status_authenticated():
     with patch("colab_agent_bridge.cli.SessionManager") as mock_mgr_cls:
         mock_mgr = MagicMock()
@@ -82,7 +89,7 @@ def test_cli_down_failure():
         mock_mgr_cls.return_value = mock_mgr
 
         result = runner.invoke(app, ["down", "-s", "my-session"])
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "Error stopping session" in result.stdout
         assert "Session not found" in result.stdout
 

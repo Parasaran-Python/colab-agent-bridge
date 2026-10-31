@@ -1,4 +1,3 @@
-import sys
 from typing import Optional
 import typer
 from rich.console import Console
@@ -7,12 +6,7 @@ from rich.panel import Panel
 
 from colab_agent_bridge.config import get_config
 from colab_agent_bridge.core.session import SessionManager
-from colab_agent_bridge.core.hardware import (
-    validate_accelerator,
-    recommend_model_strategy,
-    SUPPORTED_GPUS,
-    SUPPORTED_TPUS,
-)
+from colab_agent_bridge.core.hardware import recommend_model_strategy
 from colab_agent_bridge.client.bridge import ColabBridge
 from colab_agent_bridge.client.harness import generate_agent_config
 from colab_agent_bridge.client.health import check_health
@@ -58,7 +52,12 @@ def recommend(
     gpu: str = typer.Option("T4", "-g", "--gpu", help="Accelerator (T4, L4, A100, H100)"),
 ):
     """Analyze VRAM requirements and recommend serving backend and quantization."""
-    rec = recommend_model_strategy(model, gpu)
+    try:
+        rec = recommend_model_strategy(model, gpu)
+    except ValueError as e:
+        console.print(f"[bold red]Recommendation error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
     table = Table(title=f"Hardware Strategy for {model}")
     table.add_column("Property", style="cyan")
     table.add_column("Value", style="magenta")
@@ -132,6 +131,7 @@ def down(
         console.print(f"[green]✔ Session {session} successfully released.[/green]")
     else:
         console.print(f"[red]Error stopping session:[/red] {res['stderr']}")
+        raise typer.Exit(code=1)
 
 
 @app.command()
