@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Environments & Virtualenvs
+.env
+.env.local
+.venv/
+venv/
+ENV/
+env/
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Colab CLI state, sessions, and credentials (CRITICAL: ZERO SECRETS)
+sessions.json
+settings.json
+history/
+*.token.json
+token.json
+*oauth-config*.json
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.colab*
+credentials/
