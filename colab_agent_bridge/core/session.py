@@ -17,10 +17,24 @@ class SessionManager:
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if res.returncode == 0:
                 return {"authenticated": True, "output": res.stdout.strip()}
+
+            # If default strategy failed, check alternative strategy (e.g. oauth2 if adc failed)
+            alt_strategy = "oauth2" if self.config.auth_strategy == "adc" else "adc"
+            alt_cmd = [self.config.colab_cli_path, f"--auth={alt_strategy}", "sessions"]
+            alt_res = subprocess.run(alt_cmd, capture_output=True, text=True, check=False)
+            if alt_res.returncode == 0:
+                self.config.auth_strategy = alt_strategy
+                return {"authenticated": True, "output": alt_res.stdout.strip(), "auto_switched": alt_strategy}
+
             return {
                 "authenticated": False,
                 "error": res.stderr.strip() or res.stdout.strip(),
-                "remediation": "Run: gcloud auth application-default login --scopes=openid,https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/colaboratory",
+                "remediation": (
+                    "Run: gcloud auth application-default login --scopes=openid,"
+                    "https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email,"
+                    "https://www.googleapis.com/auth/colaboratory\n"
+                    "Or run: colab --auth=oauth2 sessions to authorize via browser."
+                ),
             }
         except FileNotFoundError:
             return {
