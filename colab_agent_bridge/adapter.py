@@ -8,6 +8,20 @@ import urllib.request
 import urllib.error
 from typing import Optional, List, Dict, Any, Union
 
+try:
+    import json_repair
+except ImportError:
+    json_repair = None
+
+
+def _robust_json_loads(s: str) -> Any:
+    try:
+        return json.loads(s)
+    except Exception:
+        if json_repair is not None:
+            return json_repair.loads(s)
+        raise
+
 
 TOOL_ALIASES = {
     "create": "write",
@@ -93,7 +107,9 @@ DISALLOWED_TOOLS = {"skill", "subagent", "question"}
 def _is_tool_dict(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
-    if "name" in item and isinstance(item["name"], str) and ("arguments" in item or "parameters" in item):
+    name = item.get("name") or item.get("function_name") or item.get("tool")
+    args = item.get("arguments", item.get("parameters", item.get("input")))
+    if name and isinstance(name, str) and args is not None:
         return True
     if item.get("type") == "function" and isinstance(item.get("function"), dict):
         fn = item["function"]
@@ -109,9 +125,9 @@ def _is_tool_dict(item: Any) -> bool:
 def _extract_from_dict(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not _is_tool_dict(item):
         return None
-    if "name" in item:
-        name = item["name"]
-        args = item.get("arguments", item.get("parameters", {}))
+    name = item.get("name") or item.get("function_name") or item.get("tool")
+    if name:
+        args = item.get("arguments", item.get("parameters", item.get("input", {})))
         return _make_tool_call(name, args)
     if "function" in item and isinstance(item["function"], dict):
         fn = item["function"]
@@ -147,7 +163,7 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
                 if m_inner:
                     m_clean = m_inner.group(1).strip()
             try:
-                parsed = json.loads(m_clean)
+                parsed = _robust_json_loads(m_clean)
                 if isinstance(parsed, list):
                     for it in parsed:
                         c = _extract_from_dict(it)
@@ -167,7 +183,7 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
     if md_matches:
         for m in md_matches:
             try:
-                parsed = json.loads(m.strip())
+                parsed = _robust_json_loads(m.strip())
                 if isinstance(parsed, list):
                     for it in parsed:
                         c = _extract_from_dict(it)
@@ -184,7 +200,7 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
 
     # Strategy 3: Check if the whole cleaned string is a JSON object or array
     try:
-        parsed = json.loads(cleaned)
+        parsed = _robust_json_loads(cleaned)
         if isinstance(parsed, list):
             for it in parsed:
                 c = _extract_from_dict(it)
@@ -406,6 +422,8 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                         normalized = None
 
                     if client_wants_stream and normalized:
+                        with open("/tmp/adapter_debug.log", "a") as dbg:
+                            dbg.write(f"\n--- NORMALIZED RESPONSE ---\n{json.dumps(normalized, indent=2)}\n")
                         self.send_response(200)
                         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                         self.send_header("Cache-Control", "no-cache")
@@ -433,6 +451,7 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
 
                         # 2. Tool calls or content
                         if tool_calls:
+                            finish_reason = "tool_calls"
                             delta_tc = []
                             for idx, tc in enumerate(tool_calls):
                                 args = tc["function"]["arguments"]
@@ -454,13 +473,14 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                                 "choices": [{"index": 0, "delta": {"tool_calls": delta_tc}, "finish_reason": None}],
                             }
                             self.wfile.write(f"data: {json.dumps(c2)}\n\n".encode("utf-8"))
-                        elif content is not None:
+                        else:
+                            finish_reason = "stop"
                             c2 = {
                                 "id": msg_id,
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": model,
-                                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+                                "choices": [{"index": 0, "delta": {"content": content or ""}, "finish_reason": None}],
                             }
                             self.wfile.write(f"data: {json.dumps(c2)}\n\n".encode("utf-8"))
 

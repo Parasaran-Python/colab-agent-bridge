@@ -278,6 +278,15 @@ def test_extract_unfenced_json_tool_calls():
     assert tool_calls[0]["function"]["name"] == "tool_x"
 
 
+def test_extract_json_with_unescaped_inner_quotes():
+    content = '{"name": "shell", "arguments": {"command": "echo \\"test\\" && echo f\\"invalid: {x}\\""}}'
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] in ("shell", "bash")
+
+
+
 def test_proxy_strips_disallowed_tools():
     from http.server import HTTPServer, BaseHTTPRequestHandler
     import threading
