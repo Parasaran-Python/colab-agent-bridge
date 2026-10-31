@@ -20,18 +20,24 @@ class SSHTunnel(BaseTunnel):
         self.process: Optional[subprocess.Popen] = None
 
     def build_ssh_command(self) -> List[str]:
-        # Uses colab ssh with ProxyMode to set up direct local port forwarding
+        # Uses standard OpenSSH with colab ssh --proxy-mode as ProxyCommand
+        proxy_cmd = f"{self.config.colab_cli_path} --auth={self.config.auth_strategy} ssh --proxy-mode -s {self.session_name}"
         return [
-            self.config.colab_cli_path,
-            f"--auth={self.config.auth_strategy}",
             "ssh",
-            "-s",
-            self.session_name,
-            "--proxy-mode",
-            "--",
+            "-F",
+            "/dev/null",
+            "-o",
+            f"ProxyCommand={proxy_cmd}",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "LogLevel=ERROR",
             "-N",
             "-L",
             f"{self.local_port}:localhost:{self.remote_port}",
+            "root@colab-runtime",
         ]
 
     def start(self) -> str:

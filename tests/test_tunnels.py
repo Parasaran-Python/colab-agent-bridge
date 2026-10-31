@@ -21,12 +21,13 @@ def test_ssh_tunnel_command_generation():
     )
 
     cmd = tunnel.build_ssh_command()
-    assert "/mock/colab" in cmd
-    assert "ssh" in cmd
-    assert "-s" in cmd
-    assert "test-session" in cmd
-    assert "--proxy-mode" in cmd
-    assert "-L 8000:localhost:8000" in " ".join(cmd)
+    cmd_str = " ".join(cmd)
+    assert "/mock/colab" in cmd_str
+    assert "ssh" in cmd_str
+    assert "-s" in cmd_str
+    assert "test-session" in cmd_str
+    assert "--proxy-mode" in cmd_str
+    assert "-L 8000:localhost:8000" in cmd_str
 
 
 @patch("subprocess.Popen")

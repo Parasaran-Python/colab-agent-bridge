@@ -11,7 +11,7 @@ class OllamaBackend(BaseBackend):
         return """
 import os, subprocess
 print("[Ollama] Downloading and installing Ollama...")
-os.system("curl -fsSL https://ollama.com/install.sh | sh")
+os.system("apt-get update -qq && apt-get install -y -qq zstd && curl -fsSL https://ollama.com/install.sh | sh")
 print("[Ollama] Ollama installation finished.")
 """
 
