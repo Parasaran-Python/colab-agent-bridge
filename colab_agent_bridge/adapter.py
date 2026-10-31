@@ -10,7 +10,17 @@ from typing import Optional, List, Dict, Any, Union
 
 
 def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
-    arg_str = json.dumps(arguments) if isinstance(arguments, (dict, list)) else str(arguments)
+    if isinstance(arguments, (dict, list)):
+        arg_str = json.dumps(arguments)
+    elif isinstance(arguments, str):
+        try:
+            json.loads(arguments)
+            arg_str = arguments
+        except Exception:
+            arg_str = json.dumps(arguments)
+    else:
+        arg_str = json.dumps(arguments)
+
     return {
         "id": f"call_{uuid.uuid4().hex[:8]}",
         "type": "function",
@@ -21,64 +31,147 @@ def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
     }
 
 
+def _is_tool_dict(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    if "name" in item and isinstance(item["name"], str) and ("arguments" in item or "parameters" in item):
+        return True
+    if item.get("type") == "function" and isinstance(item.get("function"), dict):
+        fn = item["function"]
+        if "name" in fn and isinstance(fn["name"], str):
+            return True
+    if "function" in item and isinstance(item["function"], dict):
+        fn = item["function"]
+        if "name" in fn and isinstance(fn["name"], str):
+            return True
+    return False
+
+
+def _extract_from_dict(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not _is_tool_dict(item):
+        return None
+    if "name" in item:
+        name = item["name"]
+        args = item.get("arguments", item.get("parameters", {}))
+        return _make_tool_call(name, args)
+    if "function" in item and isinstance(item["function"], dict):
+        fn = item["function"]
+        name = fn.get("name")
+        args = fn.get("arguments", fn.get("parameters", {}))
+        return _make_tool_call(name, args)
+    return None
+
+
 def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
     """Inspect text content to check if it contains JSON tool calls.
 
     Handles:
     - Pure JSON dict: {"name": "...", "arguments": {...}}
     - XML wrapped: <tool_call>{"name": ...}</tool_call>
-    - Markdown fenced code blocks: ```json {"name": ...} ```
+    - Single or multiple Markdown fenced code blocks: ```json {"name": ...} ```
     - List of tool calls: [{"name": ...}, ...]
+    - Raw un-fenced JSON objects embedded in conversational text
     """
     if not content or not isinstance(content, str):
         return None
 
     cleaned = content.strip()
+    calls: List[Dict[str, Any]] = []
 
-    # 1. Strip XML <tool_call> tags if present
-    match = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", cleaned, re.DOTALL)
-    if match:
-        cleaned = match.group(1).strip()
-
-    # 2. Strip Markdown code blocks ```json ... ``` or ``` ... ```
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].strip() == "```":
-            cleaned = "\n".join(lines[1:-1]).strip()
-
-    # 3. Quick check if it looks like JSON object or array
-    if not (cleaned.startswith("{") and cleaned.endswith("}")) and not (
-        cleaned.startswith("[") and cleaned.endswith("]")
-    ):
-        return None
-
-    try:
-        parsed = json.loads(cleaned)
-    except Exception:
-        return None
-
-    # Case A: Single dict with 'name' and ('arguments' or 'parameters')
-    if isinstance(parsed, dict):
-        name = parsed.get("name")
-        args = parsed.get("arguments", parsed.get("parameters"))
-        if name and isinstance(name, str) and args is not None:
-            return [_make_tool_call(name, args)]
-
-    # Case B: List of dicts with 'name' and ('arguments' or 'parameters')
-    if isinstance(parsed, list) and len(parsed) > 0:
-        calls = []
-        for item in parsed:
-            if isinstance(item, dict):
-                name = item.get("name")
-                args = item.get("arguments", item.get("parameters"))
-                if name and isinstance(name, str) and args is not None:
-                    calls.append(_make_tool_call(name, args))
-                else:
-                    return None
-            else:
-                return None
+    # Strategy 1: Check for XML <tool_call> tags
+    xml_matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", cleaned, re.DOTALL)
+    if xml_matches:
+        for m in xml_matches:
+            m_clean = m.strip()
+            if m_clean.startswith("```"):
+                m_inner = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", m_clean)
+                if m_inner:
+                    m_clean = m_inner.group(1).strip()
+            try:
+                parsed = json.loads(m_clean)
+                if isinstance(parsed, list):
+                    for it in parsed:
+                        c = _extract_from_dict(it)
+                        if c:
+                            calls.append(c)
+                elif isinstance(parsed, dict):
+                    c = _extract_from_dict(parsed)
+                    if c:
+                        calls.append(c)
+            except Exception:
+                pass
         if calls:
             return calls
+
+    # Strategy 2: Check for markdown code blocks ```json ... ``` or ``` ... ```
+    md_matches = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+    if md_matches:
+        for m in md_matches:
+            try:
+                parsed = json.loads(m.strip())
+                if isinstance(parsed, list):
+                    for it in parsed:
+                        c = _extract_from_dict(it)
+                        if c:
+                            calls.append(c)
+                elif isinstance(parsed, dict):
+                    c = _extract_from_dict(parsed)
+                    if c:
+                        calls.append(c)
+            except Exception:
+                pass
+        if calls:
+            return calls
+
+    # Strategy 3: Check if the whole cleaned string is a JSON object or array
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            for it in parsed:
+                c = _extract_from_dict(it)
+                if c:
+                    calls.append(c)
+            if calls:
+                return calls
+        elif isinstance(parsed, dict):
+            c = _extract_from_dict(parsed)
+            if c:
+                return [c]
+    except Exception:
+        pass
+
+    # Strategy 4: Raw JSON decoder scan (for un-fenced JSON objects in conversational text)
+    decoder = json.JSONDecoder()
+    pos = 0
+    while pos < len(cleaned):
+        match = re.search(r"[\{\[]", cleaned[pos:])
+        if not match:
+            break
+        idx = pos + match.start()
+        try:
+            parsed, end_idx = decoder.raw_decode(cleaned, idx)
+            if isinstance(parsed, dict):
+                c = _extract_from_dict(parsed)
+                if c:
+                    calls.append(c)
+                    pos = end_idx
+                    continue
+            elif isinstance(parsed, list):
+                has_calls = False
+                for it in parsed:
+                    c = _extract_from_dict(it)
+                    if c:
+                        calls.append(c)
+                        has_calls = True
+                if has_calls:
+                    pos = end_idx
+                    continue
+        except Exception:
+            pass
+        pos = idx + 1
+
+    if calls:
+        return calls
 
     return None
 
@@ -125,14 +218,15 @@ def normalize_chat_completion_stream_chunk(chunk_dict: Dict[str, Any]) -> Dict[s
                     "content": None,
                     "tool_calls": [
                         {
-                            "index": 0,
-                            "id": extracted[0]["id"],
+                            "index": idx,
+                            "id": tc.get("id", f"call_{uuid.uuid4().hex[:8]}"),
                             "type": "function",
                             "function": {
-                                "name": extracted[0]["function"]["name"],
-                                "arguments": extracted[0]["function"]["arguments"],
+                                "name": tc["function"]["name"],
+                                "arguments": tc["function"]["arguments"],
                             },
                         }
+                        for idx, tc in enumerate(extracted)
                     ],
                 }
                 choice["finish_reason"] = "tool_calls"
@@ -178,21 +272,38 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
         self._proxy_request("HEAD")
 
     def _proxy_request(self, method: str):
+        import time
+
         target_url = f"http://127.0.0.1:{self.target_port}{self.path}"
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len) if content_len > 0 else None
 
+        client_wants_stream = False
+        forward_body = body
+
+        if method == "POST" and "/chat/completions" in self.path and body:
+            try:
+                req_json = json.loads(body.decode("utf-8"))
+                if req_json.get("stream") is True:
+                    client_wants_stream = True
+                    req_json["stream"] = False
+                    forward_body = json.dumps(req_json).encode("utf-8")
+            except Exception:
+                pass
+
         req_headers = {k: v for k, v in self.headers.items() if k.lower() != "host"}
         req_headers["Host"] = f"127.0.0.1:{self.target_port}"
+        if forward_body is not None:
+            req_headers["Content-Length"] = str(len(forward_body))
 
-        req = urllib.request.Request(target_url, data=body, headers=req_headers, method=method)
+        req = urllib.request.Request(target_url, data=forward_body, headers=req_headers, method=method)
 
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 resp_headers = resp.info()
                 content_type = resp_headers.get("Content-Type", "")
 
-                # If non-streaming chat completions JSON, normalize tool calls
+                # Normalize chat completions
                 if (
                     "application/json" in content_type
                     and "/chat/completions" in self.path
@@ -202,10 +313,83 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                     try:
                         data = json.loads(raw_body.decode("utf-8"))
                         normalized = normalize_chat_completion_response(data)
-                        output_bytes = json.dumps(normalized).encode("utf-8")
                     except Exception:
-                        output_bytes = raw_body
+                        normalized = None
 
+                    if client_wants_stream and normalized:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "keep-alive")
+                        self.end_headers()
+
+                        choice = normalized.get("choices", [{}])[0]
+                        message = choice.get("message", {})
+                        tool_calls = message.get("tool_calls")
+                        content = message.get("content")
+                        finish_reason = choice.get("finish_reason", "stop")
+                        msg_id = normalized.get("id", f"chatcmpl-{uuid.uuid4().hex[:8]}")
+                        created = normalized.get("created", int(time.time()))
+                        model = normalized.get("model", "")
+
+                        # 1. Initial role chunk
+                        c1 = {
+                            "id": msg_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+                        }
+                        self.wfile.write(f"data: {json.dumps(c1)}\n\n".encode("utf-8"))
+
+                        # 2. Tool calls or content
+                        if tool_calls:
+                            delta_tc = []
+                            for idx, tc in enumerate(tool_calls):
+                                args = tc["function"]["arguments"]
+                                arg_str = args if isinstance(args, str) else json.dumps(args)
+                                delta_tc.append({
+                                    "index": idx,
+                                    "id": tc.get("id", f"call_{uuid.uuid4().hex[:8]}"),
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc["function"]["name"],
+                                        "arguments": arg_str,
+                                    },
+                                })
+                            c2 = {
+                                "id": msg_id,
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": model,
+                                "choices": [{"index": 0, "delta": {"tool_calls": delta_tc}, "finish_reason": None}],
+                            }
+                            self.wfile.write(f"data: {json.dumps(c2)}\n\n".encode("utf-8"))
+                        elif content is not None:
+                            c2 = {
+                                "id": msg_id,
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": model,
+                                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+                            }
+                            self.wfile.write(f"data: {json.dumps(c2)}\n\n".encode("utf-8"))
+
+                        # 3. Final chunk with finish_reason
+                        c3 = {
+                            "id": msg_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+                        }
+                        self.wfile.write(f"data: {json.dumps(c3)}\n\n".encode("utf-8"))
+                        self.wfile.write(b"data: [DONE]\n\n")
+                        self.wfile.flush()
+                        return
+
+                    # Return standard non-streaming JSON
+                    output_bytes = json.dumps(normalized).encode("utf-8") if normalized else raw_body
                     self.send_response(resp.status)
                     for k, v in resp_headers.items():
                         if k.lower() not in ["content-length", "transfer-encoding"]:

@@ -15,7 +15,9 @@ def check_health(endpoint_url: str, timeout_seconds: int = 600, poll_interval: i
         try:
             resp = requests.get(models_url, timeout=3)
             if resp.status_code == 200:
-                return {"ready": True, "elapsed": round(time.time() - start_time, 1), "data": resp.json()}
+                body = resp.json()
+                if body.get("data") is not None:
+                    return {"ready": True, "elapsed": round(time.time() - start_time, 1), "data": body}
         except requests.RequestException:
             pass
         time.sleep(poll_interval)

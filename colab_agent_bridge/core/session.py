@@ -65,8 +65,10 @@ class SessionManager:
             cmd.append("--high-mem")
 
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        out = (res.stderr + " " + res.stdout).lower()
+        already_exists = "already exists" in out or "allocation refused" in out
         return {
-            "success": res.returncode == 0,
+            "success": res.returncode == 0 or already_exists,
             "session_name": session_name,
             "stdout": res.stdout.strip(),
             "stderr": res.stderr.strip(),

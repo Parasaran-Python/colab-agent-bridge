@@ -65,7 +65,7 @@ class ColabBridge:
         # 2. Install backend prerequisites
         backend = get_backend(self.backend_name)
         install_script = backend.generate_install_script()
-        install_res = self.executor.run_code(self.session_name, install_script)
+        install_res = self.executor.run_code(self.session_name, install_script, timeout=timeout)
         if not install_res.get("success"):
             raise RuntimeError(
                 f"Backend installation failed on Colab VM: {install_res.get('stderr') or install_res.get('stdout')}"
@@ -73,7 +73,7 @@ class ColabBridge:
 
         # 3. Launch model server
         start_script = backend.generate_start_script(model_name=model_name, port=8000)
-        self.executor.run_code(self.session_name, start_script)
+        self.executor.run_code(self.session_name, start_script, timeout=timeout)
 
         # 4. Open tunnel and smart adapter
         if self.tunnel_type == "cloudflare":

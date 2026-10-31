@@ -165,3 +165,72 @@ def test_adapter_server_proxy_e2e():
         adapter_server.server_close()
         upstream_server.shutdown()
         upstream_server.server_close()
+
+
+def test_extract_multiple_markdown_code_blocks():
+    content = """```json
+{
+  "name": "write",
+  "arguments": {
+    "content": "def add(a, b): return a + b",
+    "path": "scientific_calculator/calculator.py"
+  }
+}
+```
+
+```json
+{
+  "name": "write",
+  "arguments": {
+    "content": "def test_add(): assert add(1, 2) == 3",
+    "path": "scientific_calculator/test_calculator.py"
+  }
+}
+```"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 2
+    assert tool_calls[0]["function"]["name"] == "write"
+    assert "calculator.py" in tool_calls[0]["function"]["arguments"]
+    assert tool_calls[1]["function"]["name"] == "write"
+    assert "test_calculator.py" in tool_calls[1]["function"]["arguments"]
+
+
+def test_extract_multiple_tool_calls_with_surrounding_text():
+    content = """I will now create the calculator implementation and tests.
+```json
+{"name": "write", "arguments": {"path": "calc.py", "content": "1"}}
+```
+And here is the test:
+```json
+{"name": "write", "arguments": {"path": "test.py", "content": "2"}}
+```
+Done!"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 2
+    assert tool_calls[0]["function"]["name"] == "write"
+    assert tool_calls[1]["function"]["name"] == "write"
+
+
+def test_extract_multiple_xml_tool_calls():
+    content = """<tool_call>
+{"name": "tool_a", "arguments": {"x": 1}}
+</tool_call>
+<tool_call>
+{"name": "tool_b", "arguments": {"y": 2}}
+</tool_call>"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 2
+    assert tool_calls[0]["function"]["name"] == "tool_a"
+    assert tool_calls[1]["function"]["name"] == "tool_b"
+
+
+def test_extract_unfenced_json_tool_calls():
+    content = '{"name": "tool_x", "arguments": {"foo": "bar"}}'
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "tool_x"
+
