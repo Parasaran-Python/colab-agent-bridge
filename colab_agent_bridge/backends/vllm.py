@@ -29,6 +29,7 @@ log_file = "/content/vllm_server.log"
 cmd = (
     f"nohup {{sys.executable}} -m vllm.entrypoints.openai.api_server "
     f"--model {model_name} "
+    f"--served-model-name {model_name} default "
     f"--port {port} "
     f"--host 0.0.0.0 "
     f"--max-model-len {max_len} "

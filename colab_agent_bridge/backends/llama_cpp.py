@@ -27,6 +27,7 @@ log_file = "/content/llama_cpp_server.log"
 cmd = (
     f"nohup {{sys.executable}} -m llama_cpp.server "
     f"--hf_model_repo_id {model_name} "
+    f"--model_alias default "
     f"--host 0.0.0.0 "
     f"--port {port} "
     f"--n_gpu_layers -1 "
