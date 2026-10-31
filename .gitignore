@@ -41,3 +41,6 @@ id_rsa*
 id_ed25519*
 .colab*
 credentials/
+
+# Internal SDD workspace
+.superpowers/
