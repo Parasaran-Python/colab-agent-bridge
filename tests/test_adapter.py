@@ -167,6 +167,49 @@ def test_adapter_server_proxy_e2e():
         upstream_server.server_close()
 
 
+def test_tool_aliases_create_to_write():
+    content = """```json
+{"name": "create", "arguments": {"filepath": "calculator.py", "text": "def add(a, b): return a + b"}}
+```"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "write"
+    parsed_args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert parsed_args["path"] == "calculator.py"
+    assert parsed_args["content"] == "def add(a, b): return a + b"
+
+
+def test_tool_aliases_native_tool_calls():
+    raw_response = {
+        "id": "chatcmpl-test",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "create",
+                                "arguments": '{"path": "test.py", "content": "1"}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+    normalized = normalize_chat_completion_response(raw_response)
+    tc = normalized["choices"][0]["message"]["tool_calls"][0]
+    assert tc["function"]["name"] == "write"
+    assert json.loads(tc["function"]["arguments"]) == {"path": "test.py", "content": "1"}
+
+
+
 def test_extract_multiple_markdown_code_blocks():
     content = """```json
 {
@@ -291,5 +334,48 @@ def test_proxy_strips_disallowed_tools():
         adapter_server.server_close()
         upstream_server.shutdown()
         upstream_server.server_close()
+
+
+def test_tool_aliases_create_to_write():
+    content = """```json
+{"name": "create", "arguments": {"filepath": "calculator.py", "text": "def add(a, b): return a + b"}}
+```"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "write"
+    parsed_args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert parsed_args["path"] == "calculator.py"
+    assert parsed_args["content"] == "def add(a, b): return a + b"
+
+
+def test_tool_aliases_native_tool_calls():
+    raw_response = {
+        "id": "chatcmpl-test",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "create",
+                                "arguments": '{"path": "test.py", "content": "1"}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+    normalized = normalize_chat_completion_response(raw_response)
+    tc = normalized["choices"][0]["message"]["tool_calls"][0]
+    assert tc["function"]["name"] == "write"
+    assert json.loads(tc["function"]["arguments"]) == {"path": "test.py", "content": "1"}
+
 
 

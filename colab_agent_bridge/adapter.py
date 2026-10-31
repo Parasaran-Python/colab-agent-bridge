@@ -9,13 +9,69 @@ import urllib.error
 from typing import Optional, List, Dict, Any, Union
 
 
+TOOL_ALIASES = {
+    "create": "write",
+    "create_file": "write",
+    "new_file": "write",
+    "write_file": "write",
+    "new": "write",
+    "touch": "write",
+    "read_file": "read",
+    "view": "read",
+    "view_file": "read",
+    "cat": "read",
+    "open_file": "read",
+    "edit_file": "edit",
+    "modify_file": "edit",
+    "update_file": "edit",
+    "terminal": "bash",
+    "cmd": "bash",
+    "run_command": "bash",
+    "execute_command": "bash",
+    "exec_command": "bash",
+}
+
+
+def _normalize_tool_arguments(name: str, args: Any) -> Any:
+    if not isinstance(args, dict):
+        return args
+
+    # For write / edit / read file paths
+    if name in ("write", "edit", "read", "patch"):
+        if "path" not in args:
+            for alt in ("file_path", "filepath", "filename", "file", "target"):
+                if alt in args:
+                    args["path"] = args.pop(alt)
+                    break
+        if name in ("write", "edit") and "content" not in args:
+            for alt in ("text", "data", "code", "body"):
+                if alt in args:
+                    args["content"] = args.pop(alt)
+                    break
+
+    # For bash / shell command
+    if name in ("bash", "shell"):
+        if "command" not in args:
+            for alt in ("cmd", "script", "code"):
+                if alt in args:
+                    args["command"] = args.pop(alt)
+                    break
+
+    return args
+
+
 def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
-    if isinstance(arguments, (dict, list)):
+    norm_name = TOOL_ALIASES.get(name.lower().strip(), name)
+    if isinstance(arguments, dict):
+        norm_args = _normalize_tool_arguments(norm_name, arguments)
+        arg_str = json.dumps(norm_args)
+    elif isinstance(arguments, list):
         arg_str = json.dumps(arguments)
     elif isinstance(arguments, str):
         try:
-            json.loads(arguments)
-            arg_str = arguments
+            parsed = json.loads(arguments)
+            norm_args = _normalize_tool_arguments(norm_name, parsed)
+            arg_str = json.dumps(norm_args)
         except Exception:
             arg_str = json.dumps(arguments)
     else:
@@ -25,7 +81,7 @@ def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
         "id": f"call_{uuid.uuid4().hex[:8]}",
         "type": "function",
         "function": {
-            "name": name,
+            "name": norm_name,
             "arguments": arg_str,
         },
     }
@@ -190,8 +246,22 @@ def normalize_chat_completion_response(response: Dict[str, Any]) -> Dict[str, An
         content = message.get("content")
         tool_calls = message.get("tool_calls")
 
-        # If already has tool_calls, nothing to normalize
-        if tool_calls:
+        # If already has tool_calls, normalize tool names (e.g. create -> write)
+        if tool_calls and isinstance(tool_calls, list):
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tname = fn.get("name", "")
+                if tname and tname.lower().strip() in TOOL_ALIASES:
+                    norm = TOOL_ALIASES[tname.lower().strip()]
+                    fn["name"] = norm
+                    arg_raw = fn.get("arguments")
+                    if isinstance(arg_raw, str):
+                        try:
+                            parsed_args = json.loads(arg_raw)
+                            norm_args = _normalize_tool_arguments(norm, parsed_args)
+                            fn["arguments"] = json.dumps(norm_args)
+                        except Exception:
+                            pass
             continue
 
         if content and isinstance(content, str):
