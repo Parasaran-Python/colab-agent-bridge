@@ -212,3 +212,64 @@ def test_cli_down_all():
         assert "Scanning and terminating all sessions across all accounts" in result.stdout
         assert "Terminated 3 session(s) across all accounts" in result.stdout
         assert mock_cleanup.call_count == 3
+
+
+def test_ssh_tunnel_profile_command_and_auth(temp_profile_mgr):
+    from colab_agent_bridge.config import BridgeConfig
+    from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
+
+    mgr = temp_profile_mgr
+    mgr.create_profile("work")
+    config = BridgeConfig(colab_cli_path="/mock/colab", auth_strategy="adc")
+
+    # Explicit profile
+    tunnel = SSHTunnel(
+        session_name="work-sess",
+        local_port=8000,
+        remote_port=8000,
+        config=config,
+        profile="work",
+        profile_mgr=mgr,
+    )
+    cmd = " ".join(tunnel.build_ssh_command())
+    assert f"HOME={mgr.profiles_dir / 'work'}" in cmd
+    assert "--auth=oauth2" in cmd
+
+    # Active profile inheritance
+    mgr.set_active_profile("work")
+    tunnel_auto = SSHTunnel(
+        session_name="work-sess",
+        local_port=8000,
+        remote_port=8000,
+        config=config,
+        profile=None,
+        profile_mgr=mgr,
+    )
+    cmd_auto = " ".join(tunnel_auto.build_ssh_command())
+    assert f"HOME={mgr.profiles_dir / 'work'}" in cmd_auto
+    assert "--auth=oauth2" in cmd_auto
+
+
+def test_executor_and_session_profile_auth(temp_profile_mgr):
+    from colab_agent_bridge.config import BridgeConfig
+    from colab_agent_bridge.core.executor import RemoteExecutor
+
+    mgr = temp_profile_mgr
+    mgr.create_profile("dev")
+    config = BridgeConfig(colab_cli_path="/mock/colab", auth_strategy="adc")
+
+    sm = SessionManager(config=config, profile="dev", profile_mgr=mgr)
+    assert sm._get_auth_strategy() == "oauth2"
+    assert sm._build_base_cmd() == ["/mock/colab", "--auth=oauth2"]
+
+    rem = RemoteExecutor(config=config, profile="dev", profile_mgr=mgr)
+    assert rem._get_auth_strategy() == "oauth2"
+    assert rem._build_base_cmd() == ["/mock/colab", "--auth=oauth2"]
+
+
+def test_cloudflare_tunnel_profile_forwarding():
+    from colab_agent_bridge.tunnels.cloudflare import CloudflareTunnel
+
+    tunnel = CloudflareTunnel(session_name="test-cf", profile="work")
+    assert tunnel.profile == "work"
+    assert tunnel.executor.profile == "work"

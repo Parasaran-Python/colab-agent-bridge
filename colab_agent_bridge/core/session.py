@@ -10,16 +10,23 @@ class SessionManager:
         self,
         config: Optional[BridgeConfig] = None,
         profile: Optional[str] = None,
+        profile_mgr: Optional[ProfileManager] = None,
     ):
         self.config = config or get_config()
         self.profile = profile
-        self.profile_mgr = ProfileManager()
+        self.profile_mgr = profile_mgr or ProfileManager()
 
     def _get_env(self) -> Dict[str, str]:
         return self.profile_mgr.get_profile_env(self.profile)
 
+    def _get_auth_strategy(self) -> str:
+        target = self.profile if self.profile is not None else self.profile_mgr.get_active_profile()
+        if target and target != "default":
+            return "oauth2"
+        return self.config.auth_strategy
+
     def _build_base_cmd(self) -> List[str]:
-        return [self.config.colab_cli_path, f"--auth={self.config.auth_strategy}"]
+        return [self.config.colab_cli_path, f"--auth={self._get_auth_strategy()}"]
 
     def verify_auth(self) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["sessions"]

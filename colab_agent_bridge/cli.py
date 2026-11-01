@@ -44,16 +44,25 @@ def profile_list():
     table.add_column("Status", style="bold")
 
     total_active_sessions = 0
+    total_usage_rate = 0.0
+    total_assignments = 0
     for p in profiles:
         is_active_marker = " [bold green](active)[/bold green]" if p.name == active_profile else ""
         name_display = f"{p.name}{is_active_marker}"
         email_display = p.email or "[dim]unknown / unauth[/dim]"
         cu_display = f"{p.cu_balance:.2f} CU"
         rate_display = f"{p.cu_usage_rate:.2f}/hr"
-        sessions_display = ", ".join(p.active_sessions) if p.active_sessions else "[dim]None[/dim]"
+        if p.active_sessions:
+            sessions_display = ", ".join(p.active_sessions)
+        elif p.assignments > 0:
+            sessions_display = f"[yellow]{p.assignments} remote VM(s)[/yellow]"
+        else:
+            sessions_display = "[dim]None[/dim]"
         status_display = "[green]AUTH[/green]" if p.authenticated else "[red]UNAUTH[/red]"
 
         total_active_sessions += len(p.active_sessions)
+        total_usage_rate += p.cu_usage_rate
+        total_assignments += p.assignments
         table.add_row(
             name_display,
             email_display,
@@ -64,9 +73,17 @@ def profile_list():
         )
 
     console.print(table)
-    if total_active_sessions > 0:
+    if total_active_sessions > 0 or total_usage_rate > 0.0 or total_assignments > 0:
+        details = []
+        if total_active_sessions > 0:
+            details.append(f"{total_active_sessions} tracked session(s)")
+        if total_assignments > total_active_sessions:
+            details.append(f"{total_assignments - total_active_sessions} untracked remote VM(s)")
+        if total_usage_rate > 0.0:
+            details.append(f"burning {total_usage_rate:.2f} CU/hr")
+        detail_str = f" ({', '.join(details)})" if details else ""
         console.print(
-            f"[bold yellow]⚠️  Active Compute Alert: {total_active_sessions} VM(s) currently active across accounts.[/bold yellow]"
+            f"[bold yellow]⚠️  Active Compute Alert: Compute is currently active across accounts{detail_str}.[/bold yellow]"
         )
 
 

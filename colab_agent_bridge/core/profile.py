@@ -7,10 +7,11 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 
+from colab_agent_bridge.config import resolve_colab_binary
+
 DEFAULT_BRIDGE_CONFIG_DIR = Path.home() / ".config" / "colab-bridge"
 DEFAULT_PROFILES_DIR = DEFAULT_BRIDGE_CONFIG_DIR / "profiles"
 ACTIVE_PROFILE_FILE = DEFAULT_BRIDGE_CONFIG_DIR / "active_profile"
-DEFAULT_COLAB_CLI = "/run/media/parasaran/Dev/SDK/python/install/bin/colab"
 
 
 @dataclass
@@ -22,6 +23,7 @@ class ProfileInfo:
     cu_balance: float = 0.0
     cu_usage_rate: float = 0.0
     active_sessions: List[str] = field(default_factory=list)
+    assignments: int = 0
     is_active: bool = False
 
 
@@ -30,16 +32,19 @@ class ProfileManager:
         self,
         profiles_dir: Optional[Path] = None,
         colab_cli_path: Optional[str] = None,
+        config_dir: Optional[Path] = None,
     ):
-        self.profiles_dir = profiles_dir or DEFAULT_PROFILES_DIR
-        self.colab_cli_path = colab_cli_path or os.getenv("COLAB_CLI_PATH", DEFAULT_COLAB_CLI)
+        self.config_dir = config_dir or (profiles_dir.parent if profiles_dir else DEFAULT_BRIDGE_CONFIG_DIR)
+        self.profiles_dir = profiles_dir or (self.config_dir / "profiles")
+        self.active_profile_file = self.config_dir / "active_profile"
+        self.colab_cli_path = colab_cli_path or resolve_colab_binary()
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
-        DEFAULT_BRIDGE_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     def get_active_profile(self) -> str:
-        if ACTIVE_PROFILE_FILE.exists():
+        if self.active_profile_file.exists():
             try:
-                name = ACTIVE_PROFILE_FILE.read_text(encoding="utf-8").strip()
+                name = self.active_profile_file.read_text(encoding="utf-8").strip()
                 if name:
                     return name
             except Exception:
@@ -49,7 +54,7 @@ class ProfileManager:
     def set_active_profile(self, name: str) -> bool:
         if name != "default" and not (self.profiles_dir / name).exists():
             raise ValueError(f"Profile '{name}' does not exist.")
-        ACTIVE_PROFILE_FILE.write_text(name, encoding="utf-8")
+        self.active_profile_file.write_text(name, encoding="utf-8")
         return True
 
     def get_profile_path(self, name: Optional[str] = None) -> Optional[Path]:
@@ -135,7 +140,7 @@ class ProfileManager:
         if name == "default":
             token_file = Path.home() / ".config" / "colab-cli" / "token.json"
             sessions_file = Path.home() / ".config" / "colab-cli" / "sessions.json"
-            cache_file = DEFAULT_BRIDGE_CONFIG_DIR / "default_profile_info.json"
+            cache_file = self.config_dir / "default_profile_info.json"
             p_path = Path.home()
         else:
             p_path = self.profiles_dir / name
@@ -156,10 +161,16 @@ class ProfileManager:
 
         cu_balance = 0.0
         cu_usage_rate = 0.0
+        assignments = 0
         if authenticated:
             usage = self.query_usage(name)
             cu_balance = usage.get("balance", 0.0)
             cu_usage_rate = usage.get("rate", 0.0)
+            assignments = usage.get("assignments", 0)
+
+        # If email was not resolved (e.g. token expired and was refreshed during query_usage), retry once
+        if authenticated and not email:
+            email = self.fetch_email_from_token(token_file, cache_file)
 
         return ProfileInfo(
             name=name,
@@ -169,6 +180,7 @@ class ProfileManager:
             cu_balance=cu_balance,
             cu_usage_rate=cu_usage_rate,
             active_sessions=active_sessions,
+            assignments=assignments,
             is_active=is_active,
         )
 
@@ -182,45 +194,48 @@ class ProfileManager:
 
     def query_usage(self, profile_name: Optional[str] = None) -> Dict[str, Any]:
         env = self.get_profile_env(profile_name)
-        try:
-            res = subprocess.run(
-                [self.colab_cli_path, "--auth=oauth2", "usage"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-            if res.returncode == 0:
-                balance = 0.0
-                rate = 0.0
-                assignments = 0
-                for line in res.stdout.splitlines():
-                    lower = line.lower()
-                    if "current balance:" in lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            val_str = parts[1].replace("compute units", "").strip()
-                            try:
-                                balance = float(val_str)
-                            except ValueError:
-                                pass
-                    elif "usage rate:" in lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            val_str = parts[1].replace("/hr", "").strip()
-                            try:
-                                rate = float(val_str)
-                            except ValueError:
-                                pass
-                    elif "active assignments:" in lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            try:
-                                assignments = int(parts[1].strip())
-                            except ValueError:
-                                pass
-                return {"balance": balance, "rate": rate, "assignments": assignments, "success": True}
-        except Exception:
-            pass
+        target = profile_name if profile_name is not None else self.get_active_profile()
+        auth_modes = ["oauth2"] if target != "default" else ["oauth2", "adc"]
+        for auth_mode in auth_modes:
+            try:
+                res = subprocess.run(
+                    [self.colab_cli_path, f"--auth={auth_mode}", "usage"],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    balance = 0.0
+                    rate = 0.0
+                    assignments = 0
+                    for line in res.stdout.splitlines():
+                        lower = line.lower()
+                        if "current balance:" in lower:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                val_str = parts[1].replace("compute units", "").strip()
+                                try:
+                                    balance = float(val_str)
+                                except ValueError:
+                                    pass
+                        elif "usage rate:" in lower:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                val_str = parts[1].replace("/hr", "").strip()
+                                try:
+                                    rate = float(val_str)
+                                except ValueError:
+                                    pass
+                        elif "active assignments:" in lower:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                try:
+                                    assignments = int(parts[1].strip())
+                                except ValueError:
+                                    pass
+                    return {"balance": balance, "rate": rate, "assignments": assignments, "success": True}
+            except Exception:
+                pass
         return {"balance": 0.0, "rate": 0.0, "assignments": 0, "success": False}

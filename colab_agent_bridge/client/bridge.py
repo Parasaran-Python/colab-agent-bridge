@@ -79,7 +79,12 @@ class ColabBridge:
 
         # 4. Open tunnel and smart adapter
         if self.tunnel_type == "cloudflare":
-            self.tunnel = CloudflareTunnel(self.session_name, remote_port=8000, config=self.config)
+            self.tunnel = CloudflareTunnel(
+                self.session_name,
+                remote_port=8000,
+                config=self.config,
+                profile=self.profile,
+            )
             self.endpoint_url = self.tunnel.start()
         else:
             tunnel_port = self.local_port + 1000
