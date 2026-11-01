@@ -139,7 +139,7 @@ if os.path.exists("/content/cloudflared.log"):
 
 # Start websocat bridge (TCP port -> WebSocket port 18080)
 if os.path.exists("/content/websocat"):
-    os.system(f"nohup /content/websocat -b --ping-interval 15 --ping-timeout 30 ws-l:127.0.0.1:18080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
+    os.system(f"nohup /content/websocat -b --ping-interval 15 ws-l:127.0.0.1:18080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
 
 # Start cloudflared tunnel
 if os.path.exists("/content/cloudflared"):
@@ -260,7 +260,7 @@ for _ in range(30):
 # Connect to worker's Cloudflare tunnel endpoint and expose local port 50052
 if os.path.exists(websocat_bin):
     print("[cluster-coordinator] Establishing P2P WebSocket bridge to worker...")
-    os.system(f"nohup /content/websocat -b --ping-interval 15 --ping-timeout 30 tcp-l:127.0.0.1:50052 {wss_url} > /content/websocat_client.log 2>&1 &")
+    os.system(f"nohup /content/websocat -b --ping-interval 15 tcp-l:127.0.0.1:50052 {wss_url} > /content/websocat_client.log 2>&1 &")
     time.sleep(3)
 """
         rpc_arg = "--rpc 127.0.0.1:50052"

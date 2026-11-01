@@ -194,6 +194,7 @@ def test_cli_status_all():
 def test_cli_down_all():
     with patch("colab_agent_bridge.cli.ProfileManager") as mock_pm_cls, \
          patch("colab_agent_bridge.cli.SessionManager") as mock_sm_cls, \
+         patch("colab_agent_bridge.cli.ClusterManager.teardown_all") as mock_cm_teardown, \
          patch("colab_agent_bridge.tunnels.ssh_tunnel.SSHTunnel.cleanup_session_tunnels") as mock_cleanup:
         
         mock_pm = MagicMock()
