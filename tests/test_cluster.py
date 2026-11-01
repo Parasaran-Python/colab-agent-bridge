@@ -479,6 +479,7 @@ def test_cluster_bridge_deploy_health_failure(
         ProfileInfo(name="default", path=Path("/h"), authenticated=True),
         ProfileInfo(name="personal_2", path=Path("/p"), authenticated=True),
     ]
+    mock_prov.return_value = {"status": "active", "public_tunnel_url": "https://worker.trycloudflare.com"}
     mock_sm = MagicMock()
     mock_sm.verify_auth.return_value = {"authenticated": True}
     mock_sm.new_session.return_value = {"success": True}

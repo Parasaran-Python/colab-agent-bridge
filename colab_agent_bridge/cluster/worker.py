@@ -124,36 +124,19 @@ print("[cluster-worker] Worker dependencies installed successfully.")
 def generate_worker_start_script(port: int = 50052, enable_tunnel: bool = True) -> str:
     tunnel_setup = ""
     if enable_tunnel:
-        tunnel_setup = """
-# Install websocat and cloudflared for direct P2P cloud bridge
-websocat_bin = "/content/websocat"
-if not os.path.exists(websocat_bin):
-    try:
-        urllib.request.urlretrieve("https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl", websocat_bin)
-        os.chmod(websocat_bin, 0o755)
-    except Exception as e:
-        print(f"[cluster-worker] websocat download error: {e}")
-
-cloudflared_bin = "/content/cloudflared"
-if not os.path.exists(cloudflared_bin):
-    try:
-        urllib.request.urlretrieve("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64", cloudflared_bin)
-        os.chmod(cloudflared_bin, 0o755)
-    except Exception as e:
-        print(f"[cluster-worker] cloudflared download error: {e}")
-
+        tunnel_setup = f"""
 # Kill any existing websocat or cloudflared processes
 os.system("pkill -9 -f 'websocat' || true")
 os.system("pkill -9 -f 'cloudflared' || true")
 time.sleep(1)
 
 # Start websocat bridge (TCP port -> WebSocket port 8080)
-if os.path.exists(websocat_bin):
-    os.system(f"nohup {websocat_bin} -b -E ws-l:127.0.0.1:8080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
+if os.path.exists("/content/websocat"):
+    os.system("nohup /content/websocat -b -E ws-l:127.0.0.1:8080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
 
 # Start cloudflared tunnel
-if os.path.exists(cloudflared_bin):
-    os.system(f"nohup {cloudflared_bin} tunnel --url http://127.0.0.1:8080 > /content/cloudflared.log 2>&1 &")
+if os.path.exists("/content/cloudflared"):
+    os.system("nohup /content/cloudflared tunnel --url http://127.0.0.1:8080 > /content/cloudflared.log 2>&1 &")
 
 # Poll for trycloudflare.com URL
 tunnel_url = None
@@ -165,7 +148,7 @@ for _ in range(30):
             m = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", content)
             if m:
                 tunnel_url = m.group(0)
-                print(f"[cluster-worker] TUNNEL_URL: {tunnel_url}")
+                print(f"[cluster-worker] TUNNEL_URL: {{tunnel_url}}")
                 break
 """
 

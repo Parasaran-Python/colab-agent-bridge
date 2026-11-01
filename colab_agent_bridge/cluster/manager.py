@@ -237,13 +237,19 @@ class ClusterBridge:
                 for fut in as_completed(worker_futures):
                     node = worker_futures[fut]
                     try:
-                        fut.result()
+                        res = fut.result()
+                        if isinstance(res, dict) and res.get("public_tunnel_url"):
+                            node.public_tunnel_url = res["public_tunnel_url"]
                     except Exception as exc:
                         raise RuntimeError(
                             f"Worker provisioning failed for node '{node.session_name}': {exc}"
                         ) from exc
 
             worker_tunnel_url = worker_nodes[0].public_tunnel_url if worker_nodes else None
+            if worker_nodes and not worker_tunnel_url:
+                raise RuntimeError(
+                    f"Worker node '{worker_nodes[0].session_name}' failed to generate a public P2P Cloudflare tunnel URL."
+                )
             self.coordinator = ClusterCoordinator(
                 nodes=self.nodes,
                 model_name=model_name,
