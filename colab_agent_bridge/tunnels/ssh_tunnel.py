@@ -48,7 +48,12 @@ class SSHTunnel(BaseTunnel):
 
     def start(self) -> str:
         cmd = self.build_ssh_command()
-        self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
         time.sleep(2)
         if self.process.poll() is not None:
             stderr = ""

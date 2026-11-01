@@ -404,7 +404,7 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
         req = urllib.request.Request(target_url, data=forward_body, headers=req_headers, method=method)
 
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            with urllib.request.urlopen(req, timeout=600) as resp:
                 resp_headers = resp.info()
                 content_type = resp_headers.get("Content-Type", "")
 
@@ -539,13 +539,14 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    import sys
+    import sys, time
     l_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     t_port = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
     print(f"[SmartAdapter] Starting proxy on 127.0.0.1:{l_port} -> 127.0.0.1:{t_port}...")
     srv = start_adapter_server(listen_port=l_port, target_port=t_port)
     try:
-        srv.serve_forever()
+        while True:
+            time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
         srv.shutdown()
         srv.server_close()
