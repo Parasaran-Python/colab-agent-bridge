@@ -283,7 +283,8 @@ print(data["choices"][0]["message"]["content"])
 
 For autonomous agent code generation and repository editing:
 
-- **Fast / Lightweight (T4 16GB, L4 24GB):**
+- **Fast / Lightweight & Reasoning (T4 16GB, L4 24GB):**
+  - `cyankiwi/Ornith-1.5-9B-AWQ-INT4` / `ornith:9b` (Chain-of-Thought reasoning + tool calls on T4)
   - `Qwen/Qwen2.5-Coder-7B-Instruct` (Available in AWQ / GPTQ)
   - `deepseek-ai/deepseek-coder-6.7b-instruct`
   - `meta-llama/Llama-3.1-8B-Instruct`

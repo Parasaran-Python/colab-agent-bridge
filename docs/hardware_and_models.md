@@ -64,7 +64,14 @@ High-capacity general reasoning with strong coding instruction adherence.
 - `meta-llama/Llama-3.3-70B-Instruct-AWQ`
   - **Best on:** A100 80GB or H100 80GB
 
-### 4. StarCoder2 (BigCode / Hugging Face)
+### 4. Ornith 1.5 9B (Reasoning & Agent Scaffolding)
+Deep reasoning model fine-tuned for step-by-step thinking (`<think>`) and robust tool calling in autonomous agent loops.
+- `cyankiwi/Ornith-1.5-9B-AWQ-INT4` / `ornith:9b`
+  - **Best on:** T4 (16GB) or L4 (24GB)
+  - **Memory:** ~6.5 GB VRAM in 4-bit AWQ / Ollama Q4_K_M
+  - **Command:** `colab-bridge up ornith:9b --backend ollama --gpu T4`
+
+### 5. StarCoder2 (BigCode / Hugging Face)
 Pre-trained on 600+ programming languages, well suited for specialized languages and completion tasks.
 - `bigcode/starcoder2-7b`
   - **Best on:** T4 or L4

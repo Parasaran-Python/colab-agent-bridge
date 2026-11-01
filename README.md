@@ -15,6 +15,7 @@
 - **Multi-Accelerator Flexibility:** Run on any Colab hardware shape: Free & Pro NVIDIA T4 (16GB), L4 (24GB), A100 (40/80GB), H100 (80GB), Google Cloud TPU v5e/v6e, or High-Memory CPU.
 - **Multi-Account Clustering & Pooling:** Bypass Google Colab's 1-GPU limit per account. Manage multiple Google accounts with isolated credential profiles (`colab-bridge profile`), deploy concurrent GPUs across accounts, and monitor active compute from a unified dashboard.
 - **Unified OpenAI-Compatible Endpoints:** Deploy models via **vLLM**, **Ollama**, or **llama.cpp** exposing standard `/v1/models` and `/v1/chat/completions` endpoints.
+- **Smart Proxy Adapter:** Transparently normalizes tool aliases (e.g. `create` -> `write`), handles degraded JSON in markdown fences, parses Qwen/Ornith `<tool_call>` XML formats, and extracts `<think>` reasoning streams into OpenAI `reasoning_content`.
 - **Hybrid Tunneling:**
   - **Native SSH Tunnel:** Zero external accounts, direct local port forward (`localhost:8000`) over encrypted Colab SSH.
   - **Cloudflare Quick Tunnel:** Instant public HTTPS endpoints (`https://*.trycloudflare.com/v1`) without firewall or port-forwarding constraints.

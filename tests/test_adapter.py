@@ -388,3 +388,111 @@ def test_tool_aliases_native_tool_calls():
 
 
 
+
+
+def test_extract_tool_call_function_as_string():
+    content = '```json\n{\n  "function": "shell",\n  "arguments": {\n    "command": "ls -la"\n  }\n}\n```'
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] in ("shell", "bash")
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["command"] == "ls -la"
+
+
+def test_extract_tool_call_xml_function_parameter():
+    content = """<tool_call>
+<function=write>
+<parameter=path>
+calculator.py
+</parameter>
+<parameter=content>
+def add(a, b): return a + b
+</parameter>
+</function>
+</tool_call>"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "write"
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["path"] == "calculator.py"
+    assert "def add" in args["content"]
+
+
+def test_extract_tool_call_with_thinking_tags():
+    content = """<think>
+I need to write a calculator module and tests.
+Let me invoke write.
+</think>
+```json
+{"name": "write", "arguments": {"path": "calculator.py", "content": "# calc"}}
+```"""
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "write"
+
+
+def test_normalize_chat_completion_preserves_thinking():
+    raw_response = {
+        "id": "chatcmpl-think",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>\nThinking step by step...\n</think>\n```json\n{\"name\": \"write\", \"arguments\": {\"path\": \"test.py\", \"content\": \"1\"}}\n```",
+                },
+                "finish_reason": "stop",
+            }
+        ],
+    }
+    normalized = normalize_chat_completion_response(raw_response)
+    choice = normalized["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["reasoning_content"] == "Thinking step by step..."
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "write"
+
+
+def test_edit_empty_old_string_converts_to_write():
+    content = '```json\n{"name": "edit", "arguments": {"path": "calculator.py", "oldString": "", "newString": "def add(a, b): return a + b"}}\n```'
+    tool_calls = try_extract_tool_calls(content)
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "write"
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["path"] == "calculator.py"
+    assert args["content"] == "def add(a, b): return a + b"
+    assert "oldString" not in args
+
+
+def test_edit_native_tool_call_converts_to_write():
+    raw_response = {
+        "id": "chatcmpl-edit",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_edit",
+                            "type": "function",
+                            "function": {
+                                "name": "edit",
+                                "arguments": '{"path": "calc.py", "oldString": "", "newString": "pass"}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+    normalized = normalize_chat_completion_response(raw_response)
+    tc = normalized["choices"][0]["message"]["tool_calls"][0]
+    assert tc["function"]["name"] == "write"
+    args = json.loads(tc["function"]["arguments"])
+    assert args["path"] == "calc.py"
+    assert args["content"] == "pass"

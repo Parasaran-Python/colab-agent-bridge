@@ -220,7 +220,7 @@ def up(
     tunnel: str = typer.Option("ssh", "-t", "--tunnel", help="Tunnel type (ssh, cloudflare)"),
     port: int = typer.Option(8000, "-p", "--port", help="Local port to bind"),
     timeout: int = typer.Option(600, "--timeout", help="Timeout in seconds for model readiness"),
-    profile: Optional[str] = typer.Option(None, "-p", "--profile", help="Account profile to use"),
+    profile: Optional[str] = typer.Option(None, "-P", "--profile", help="Account profile to use"),
 ):
     """Provision a Colab VM, launch model server, and expose OpenAI endpoint."""
     console.print(f"[bold cyan]Deploying {model} on Google Colab ({gpu or tpu or 'CPU'})...[/bold cyan]")
