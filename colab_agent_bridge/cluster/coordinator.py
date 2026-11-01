@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from typing import Optional, List
+from colab_agent_bridge.config import resolve_llama_server_binary
 from colab_agent_bridge.cluster.models import ClusterNode
 
 
@@ -18,7 +19,7 @@ class ClusterCoordinator:
         self.nodes = nodes
         self.model_name = model_name
         self.coordinator_port = coordinator_port
-        self.coordinator_bin = coordinator_bin or os.environ.get("LLAMA_SERVER_PATH") or "llama-server"
+        self.coordinator_bin = coordinator_bin or resolve_llama_server_binary()
         self.tensor_split = tensor_split
         self.extra_args = extra_args or []
         self.process: Optional[subprocess.Popen] = None

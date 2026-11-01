@@ -3,6 +3,7 @@ import shutil
 from dataclasses import dataclass
 
 DEFAULT_SDK_COLAB = "/run/media/parasaran/Dev/SDK/python/install/bin/colab"
+DEFAULT_SDK_LLAMA_SERVER = "/run/media/parasaran/Dev/SDK/python/install/bin/llama-server"
 
 @dataclass
 class BridgeConfig:
@@ -22,6 +23,17 @@ def resolve_colab_binary() -> str:
     if which_path:
         return which_path
     return "colab"
+
+def resolve_llama_server_binary() -> str:
+    env_path = os.getenv("LLAMA_SERVER_PATH")
+    if env_path:
+        return env_path
+    if os.path.exists(DEFAULT_SDK_LLAMA_SERVER):
+        return DEFAULT_SDK_LLAMA_SERVER
+    which_path = shutil.which("llama-server")
+    if which_path:
+        return which_path
+    return "llama-server"
 
 def resolve_auth_strategy() -> str:
     env_strat = os.getenv("COLAB_AUTH_STRATEGY")
