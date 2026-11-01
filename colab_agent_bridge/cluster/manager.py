@@ -317,6 +317,10 @@ class ClusterBridge:
             )
             self.coordinator.start()
 
+        # Clean up any stale adapter processes on listen_port
+        os.system(f"fuser -k {self.local_port}/tcp >/dev/null 2>&1 || true")
+        time.sleep(0.5)
+
         # Start smart proxy adapter
         self.adapter_server = start_adapter_server(
             listen_port=self.local_port,
