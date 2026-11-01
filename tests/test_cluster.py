@@ -9,6 +9,7 @@ from colab_agent_bridge.cluster.state import ClusterStateStore
 from colab_agent_bridge.cluster.worker import (
     generate_worker_install_script,
     generate_worker_start_script,
+    generate_coordinator_start_script,
     provision_cluster_worker,
     stop_cluster_worker,
 )
@@ -207,10 +208,21 @@ def test_worker_scripts():
     install_script = generate_worker_install_script()
     assert "llama-cpp-python[server]" in install_script
 
-    start_script = generate_worker_start_script(port=50052)
+    start_script = generate_worker_start_script(port=50052, enable_tunnel=True)
     assert "port 50052" in start_script
     assert "-H 0.0.0.0" in start_script
     assert "rpc-server" in start_script
+    assert "websocat" in start_script
+    assert "cloudflared" in start_script
+
+    coord_script = generate_coordinator_start_script(
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        worker_tunnel_url="https://test-worker.trycloudflare.com",
+    )
+    assert "llama-server" in coord_script
+    assert "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M" in coord_script
+    assert "wss://test-worker.trycloudflare.com" in coord_script
+    assert "--rpc 127.0.0.1:50052" in coord_script
 
 
 @patch("colab_agent_bridge.cluster.worker.SSHTunnel")
@@ -339,6 +351,36 @@ def test_coordinator_lifecycle(mock_popen, mock_which):
     mock_proc.terminate.assert_called_once()
 
 
+@patch("colab_agent_bridge.cluster.coordinator.SSHTunnel")
+@patch("colab_agent_bridge.cluster.coordinator.RemoteExecutor")
+def test_coordinator_remote_lifecycle(mock_exec_cls, mock_tunnel_cls):
+    mock_exec = MagicMock()
+    mock_exec.run_code.return_value = {"success": True}
+    mock_exec_cls.return_value = mock_exec
+
+    mock_tunnel = MagicMock()
+    mock_tunnel_cls.return_value = mock_tunnel
+
+    node = ClusterNode(profile="default", session_name="c-default", local_rpc_port=50051)
+    coord = ClusterCoordinator(nodes=[node], model_name="Qwen/Qwen2.5-Coder-32B-Instruct")
+
+    res = coord.start_remote(
+        coordinator_node=node,
+        worker_tunnel_url="https://test.trycloudflare.com",
+        remote_port=8000,
+        local_port=9000,
+    )
+
+    assert res["status"] == "active"
+    assert coord.is_alive() is True
+    assert coord.is_remote is True
+    mock_tunnel.start.assert_called_once()
+
+    coord.stop()
+    mock_tunnel.stop.assert_called_once()
+    assert coord.tunnel is None
+
+
 def test_coordinator_missing_binary():
     nodes = [ClusterNode(profile="default", session_name="n0", local_rpc_port=50051)]
     coord = ClusterCoordinator(nodes=nodes, model_name="test", coordinator_bin="non_existent_binary_xyz")
@@ -348,6 +390,7 @@ def test_coordinator_missing_binary():
 
 # --- ClusterBridge Tests ---
 
+@patch("colab_agent_bridge.cluster.manager.SessionManager")
 @patch("colab_agent_bridge.cluster.manager.check_health")
 @patch("colab_agent_bridge.cluster.manager.start_adapter_server")
 @patch("colab_agent_bridge.cluster.manager.ClusterCoordinator")
@@ -359,13 +402,19 @@ def test_cluster_bridge_deploy_success(
     mock_coord_cls,
     mock_adapter,
     mock_health,
+    mock_sm_cls,
     tmp_path,
 ):
     mock_val.return_value = [
         ProfileInfo(name="default", path=Path("/h"), authenticated=True),
         ProfileInfo(name="personal_2", path=Path("/p"), authenticated=True),
     ]
-    mock_prov.return_value = {"status": "active"}
+    mock_prov.return_value = {"status": "active", "public_tunnel_url": "https://worker.trycloudflare.com"}
+
+    mock_sm = MagicMock()
+    mock_sm.verify_auth.return_value = {"authenticated": True}
+    mock_sm.new_session.return_value = {"success": True}
+    mock_sm_cls.return_value = mock_sm
 
     mock_coord = MagicMock()
     mock_coord.pid = 9999
@@ -382,6 +431,7 @@ def test_cluster_bridge_deploy_success(
         profiles=["default", "personal_2"],
         gpu="T4",
         state_store=store,
+        remote_coordinator=True,
     )
 
     res = bridge.deploy("Qwen/Qwen2.5-Coder-32B-Instruct", wait_for_ready=True)
@@ -390,8 +440,7 @@ def test_cluster_bridge_deploy_success(
     assert res["endpoint_url"] == "http://localhost:8000/v1"
     assert res["total_vram_gb"] == 32
     assert len(res["nodes"]) == 2
-    assert mock_prov.call_count == 2
-    mock_coord.start.assert_called_once()
+    mock_coord.start_remote.assert_called_once()
     mock_adapter.assert_called_once_with(listen_port=8000, target_port=9000)
 
     # Verify state was saved
@@ -410,6 +459,7 @@ def test_cluster_bridge_deploy_success(
         assert store.get("test-cluster") is None
 
 
+@patch("colab_agent_bridge.cluster.manager.SessionManager")
 @patch("colab_agent_bridge.cluster.manager.check_health")
 @patch("colab_agent_bridge.cluster.manager.start_adapter_server")
 @patch("colab_agent_bridge.cluster.manager.ClusterCoordinator")
@@ -421,12 +471,18 @@ def test_cluster_bridge_deploy_health_failure(
     mock_coord_cls,
     mock_adapter,
     mock_health,
+    mock_sm_cls,
     tmp_path,
 ):
     mock_val.return_value = [
         ProfileInfo(name="default", path=Path("/h"), authenticated=True),
         ProfileInfo(name="personal_2", path=Path("/p"), authenticated=True),
     ]
+    mock_sm = MagicMock()
+    mock_sm.verify_auth.return_value = {"authenticated": True}
+    mock_sm.new_session.return_value = {"success": True}
+    mock_sm_cls.return_value = mock_sm
+
     mock_coord_cls.return_value = MagicMock()
     mock_adapter.return_value = MagicMock()
     mock_health.return_value = {"ready": False, "error": "Cluster node unreachable"}

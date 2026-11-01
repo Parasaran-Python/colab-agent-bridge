@@ -131,6 +131,7 @@ class ClusterBridge:
         remote_rpc_port: int = 50052,
         coordinator_bin: Optional[str] = None,
         tensor_split: Optional[str] = None,
+        remote_coordinator: bool = True,
         config: Optional[BridgeConfig] = None,
         profile_mgr: Optional[ProfileManager] = None,
         state_store: Optional[ClusterStateStore] = None,
@@ -150,6 +151,7 @@ class ClusterBridge:
         self.remote_rpc_port = remote_rpc_port
         self.coordinator_bin = coordinator_bin
         self.tensor_split = tensor_split
+        self.remote_coordinator = remote_coordinator
         self.config = config or get_config()
         self.profile_mgr = profile_mgr or ProfileManager()
         self.state_store = state_store or ClusterStateStore()
@@ -187,62 +189,125 @@ class ClusterBridge:
             )
             self.nodes.append(node)
 
-        # 3. Provision workers across all profiles concurrently
-        def _provision(node: ClusterNode):
-            provision_cluster_worker(
-                node=node,
-                config=self.config,
-                timeout=timeout,
-                high_mem=self.high_mem,
-                profile_mgr=self.profile_mgr,
-            )
-
-        if len(self.nodes) > 1:
-            with ThreadPoolExecutor(max_workers=len(self.nodes)) as executor:
-                futures = {executor.submit(_provision, node): node for node in self.nodes}
-                for fut in as_completed(futures):
-                    node = futures[fut]
-                    try:
-                        fut.result()
-                    except Exception as exc:
-                        raise RuntimeError(
-                            f"Worker provisioning failed for node '{node.session_name}': {exc}"
-                        ) from exc
-        else:
-            for node in self.nodes:
-                _provision(node)
-
-        # 4. Wait for all local RPC tunnel ports to be actively accepting connections
-        import socket
-        for node in self.nodes:
-            ready = False
-            start_t = time.time()
-            while time.time() - start_t < 45:
-                try:
-                    s = socket.create_connection(("127.0.0.1", node.local_rpc_port), timeout=1)
-                    s.close()
-                    ready = True
-                    break
-                except Exception:
-                    time.sleep(1)
-            if not ready:
-                raise RuntimeError(
-                    f"Local RPC tunnel port {node.local_rpc_port} failed to become reachable for node '{node.session_name}'."
-                )
-
-        # 5. Launch coordinator
         coordinator_port = self.local_port + 1000
         tensor_split = self.tensor_split or ",".join(["1"] * len(self.nodes))
-        self.coordinator = ClusterCoordinator(
-            nodes=self.nodes,
-            model_name=model_name,
-            coordinator_port=coordinator_port,
-            coordinator_bin=self.coordinator_bin,
-            tensor_split=tensor_split,
-        )
-        self.coordinator.start()
 
-        # 5. Start smart proxy adapter
+        if self.remote_coordinator:
+            # Cloud-Native Distributed Coordinator Architecture
+            # Node 0 is the Coordinator, Node 1..N are Workers
+            self.nodes[0].role = "coordinator"
+            for n in self.nodes[1:]:
+                n.role = "worker"
+
+            worker_nodes = self.nodes[1:]
+            if worker_nodes:
+                with ThreadPoolExecutor(max_workers=len(worker_nodes)) as executor:
+                    futures = {
+                        executor.submit(
+                            provision_cluster_worker,
+                            node=n,
+                            config=self.config,
+                            timeout=timeout,
+                            high_mem=self.high_mem,
+                            profile_mgr=self.profile_mgr,
+                        ): n for n in worker_nodes
+                    }
+                    for fut in as_completed(futures):
+                        node = futures[fut]
+                        try:
+                            fut.result()
+                        except Exception as exc:
+                            raise RuntimeError(
+                                f"Worker provisioning failed for node '{node.session_name}': {exc}"
+                            ) from exc
+
+            # Launch coordinator directly on Node 0 (downloads from HF at 200MB/s, zero local disk/RAM)
+            coord_node = self.nodes[0]
+            sm = SessionManager(self.config, profile=coord_node.profile)
+            auth = sm.verify_auth()
+            if not auth.get("authenticated"):
+                raise RuntimeError(
+                    f"Authentication failed for coordinator profile '{coord_node.profile}': {auth.get('error')}"
+                )
+            sess_res = sm.new_session(
+                session_name=coord_node.session_name,
+                gpu=coord_node.gpu,
+                high_mem=self.high_mem,
+            )
+            if not sess_res.get("success"):
+                raise RuntimeError(
+                    f"Colab VM allocation failed for coordinator node '{coord_node.session_name}': {sess_res.get('stderr')}"
+                )
+
+            worker_tunnel_url = worker_nodes[0].public_tunnel_url if worker_nodes else None
+            self.coordinator = ClusterCoordinator(
+                nodes=self.nodes,
+                model_name=model_name,
+                coordinator_port=coordinator_port,
+                tensor_split=tensor_split,
+            )
+            self.coordinator.start_remote(
+                coordinator_node=coord_node,
+                worker_tunnel_url=worker_tunnel_url,
+                remote_port=8000,
+                local_port=coordinator_port,
+                timeout=timeout,
+                config=self.config,
+                profile_mgr=self.profile_mgr,
+            )
+        else:
+            # Fallback Local Coordinator Architecture
+            def _provision(node: ClusterNode):
+                provision_cluster_worker(
+                    node=node,
+                    config=self.config,
+                    timeout=timeout,
+                    high_mem=self.high_mem,
+                    profile_mgr=self.profile_mgr,
+                )
+
+            if len(self.nodes) > 1:
+                with ThreadPoolExecutor(max_workers=len(self.nodes)) as executor:
+                    futures = {executor.submit(_provision, node): node for node in self.nodes}
+                    for fut in as_completed(futures):
+                        node = futures[fut]
+                        try:
+                            fut.result()
+                        except Exception as exc:
+                            raise RuntimeError(
+                                f"Worker provisioning failed for node '{node.session_name}': {exc}"
+                            ) from exc
+            else:
+                for node in self.nodes:
+                    _provision(node)
+
+            import socket
+            for node in self.nodes:
+                ready = False
+                start_t = time.time()
+                while time.time() - start_t < 45:
+                    try:
+                        s = socket.create_connection(("127.0.0.1", node.local_rpc_port), timeout=1)
+                        s.close()
+                        ready = True
+                        break
+                    except Exception:
+                        time.sleep(1)
+                if not ready:
+                    raise RuntimeError(
+                        f"Local RPC tunnel port {node.local_rpc_port} failed to become reachable for node '{node.session_name}'."
+                    )
+
+            self.coordinator = ClusterCoordinator(
+                nodes=self.nodes,
+                model_name=model_name,
+                coordinator_port=coordinator_port,
+                coordinator_bin=self.coordinator_bin,
+                tensor_split=tensor_split,
+            )
+            self.coordinator.start()
+
+        # Start smart proxy adapter
         self.adapter_server = start_adapter_server(
             listen_port=self.local_port,
             target_port=coordinator_port,

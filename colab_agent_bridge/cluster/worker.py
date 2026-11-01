@@ -110,9 +110,56 @@ print("[cluster-worker] Worker dependencies installed successfully.")
 """
 
 
-def generate_worker_start_script(port: int = 50052) -> str:
+def generate_worker_start_script(port: int = 50052, enable_tunnel: bool = True) -> str:
+    tunnel_setup = ""
+    if enable_tunnel:
+        tunnel_setup = """
+# Install websocat and cloudflared for direct P2P cloud bridge
+websocat_bin = "/content/websocat"
+if not os.path.exists(websocat_bin):
+    try:
+        urllib.request.urlretrieve("https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl", websocat_bin)
+        os.chmod(websocat_bin, 0o755)
+    except Exception as e:
+        print(f"[cluster-worker] websocat download error: {e}")
+
+cloudflared_bin = "/content/cloudflared"
+if not os.path.exists(cloudflared_bin):
+    try:
+        urllib.request.urlretrieve("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64", cloudflared_bin)
+        os.chmod(cloudflared_bin, 0o755)
+    except Exception as e:
+        print(f"[cluster-worker] cloudflared download error: {e}")
+
+# Kill any existing websocat or cloudflared processes
+os.system("pkill -9 -f 'websocat' || true")
+os.system("pkill -9 -f 'cloudflared' || true")
+time.sleep(1)
+
+# Start websocat bridge (TCP port -> WebSocket port 8080)
+if os.path.exists(websocat_bin):
+    os.system(f"nohup {websocat_bin} -b -E ws-l:127.0.0.1:8080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
+
+# Start cloudflared tunnel
+if os.path.exists(cloudflared_bin):
+    os.system(f"nohup {cloudflared_bin} tunnel --url http://127.0.0.1:8080 > /content/cloudflared.log 2>&1 &")
+
+# Poll for trycloudflare.com URL
+tunnel_url = None
+for _ in range(30):
+    time.sleep(1)
+    if os.path.exists("/content/cloudflared.log"):
+        with open("/content/cloudflared.log", "r") as f:
+            content = f.read()
+            m = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", content)
+            if m:
+                tunnel_url = m.group(0)
+                print(f"[cluster-worker] TUNNEL_URL: {tunnel_url}")
+                break
+"""
+
     return f"""
-import os, sys, time, shutil, glob
+import os, sys, time, shutil, glob, urllib.request, re
 
 log_file = "/content/cluster_rpc_server.log"
 ld_path = "/content/llama-bin"
@@ -159,6 +206,104 @@ print(f"[cluster-worker] Launching remote RPC server daemon on port {port}...")
 os.system(cmd)
 time.sleep(2)
 print("[cluster-worker] Remote RPC server daemon active.")
+{tunnel_setup}
+"""
+
+
+def generate_coordinator_start_script(
+    model_name: str,
+    worker_tunnel_url: Optional[str] = None,
+    port: int = 8000,
+    tensor_split: str = "1,1",
+    ngl: int = 999,
+) -> str:
+    # Format HF repo identifier
+    if model_name.endswith(".gguf") or ":" in model_name:
+        hf_repo = model_name
+    elif not model_name.endswith("-GGUF"):
+        hf_repo = f"{model_name}-GGUF:Q4_K_M"
+    else:
+        hf_repo = f"{model_name}:Q4_K_M"
+
+    tunnel_client_setup = ""
+    rpc_arg = ""
+    if worker_tunnel_url:
+        wss_url = worker_tunnel_url.replace("https://", "wss://").replace("http://", "ws://")
+        tunnel_client_setup = f"""
+# Install websocat on coordinator
+websocat_bin = "/content/websocat"
+if not os.path.exists(websocat_bin):
+    try:
+        urllib.request.urlretrieve("https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl", websocat_bin)
+        os.chmod(websocat_bin, 0o755)
+    except Exception as e:
+        print(f"[cluster-coordinator] websocat download error: {{e}}")
+
+os.system("pkill -9 -f 'websocat' || true")
+time.sleep(1)
+
+# Connect to worker's Cloudflare tunnel endpoint and expose local port 50052
+if os.path.exists(websocat_bin):
+    print("[cluster-coordinator] Establishing P2P WebSocket bridge to worker...")
+    os.system("nohup /content/websocat -b -E tcp-l:127.0.0.1:50052 {wss_url} > /content/websocat_client.log 2>&1 &")
+    time.sleep(2)
+"""
+        rpc_arg = "--rpc 127.0.0.1:50052"
+
+    return f"""
+import os, sys, time, shutil, glob, urllib.request
+
+log_file = "/content/cluster_coordinator.log"
+ld_path = "/content/llama-bin"
+
+# Collect all nvidia cuda library directories
+nvidia_libs = glob.glob("/usr/local/lib/python3*/dist-packages/nvidia/*/lib")
+cuda_ld_paths = ":".join([ld_path, "/usr/lib64-nvidia", "/usr/local/cuda/lib64"] + nvidia_libs)
+
+# Locate llama-server binary
+server_bin = (
+    shutil.which("llama-server")
+    or "/content/llama-bin/llama-server"
+    or "/usr/local/bin/llama-server"
+)
+
+if not server_bin or not os.path.exists(server_bin):
+    for item in os.listdir("/content"):
+        if item.startswith("llama-b") and item != "llama-bin":
+            cand = os.path.join("/content", item, "llama-server")
+            if os.path.exists(cand):
+                server_bin = cand
+                ld_path = os.path.join("/content", item)
+                break
+
+if not server_bin or not os.path.exists(server_bin):
+    raise RuntimeError("llama-server binary not found on coordinator node.")
+
+# Terminate any previously running llama-server
+os.system("pkill -9 -f 'llama-server' || true")
+time.sleep(1)
+
+{tunnel_client_setup}
+
+rpc_flag = "{rpc_arg}"
+split_flag = "--tensor-split {tensor_split}" if rpc_flag else ""
+cmd = (
+    f"export LD_LIBRARY_PATH={{cuda_ld_paths}}:$LD_LIBRARY_PATH && "
+    f"nohup {{server_bin}} "
+    f"--hf-repo {hf_repo} "
+    f"--alias default "
+    f"--host 0.0.0.0 "
+    f"--port {port} "
+    f"{{rpc_flag}} "
+    f"{{split_flag}} "
+    f"-ngl {ngl} "
+    f"> {{log_file}} 2>&1 &"
+)
+
+print(f"[cluster-coordinator] Launching llama-server coordinator on port {port}...")
+os.system(cmd)
+time.sleep(3)
+print("[cluster-coordinator] Coordinator process launched.")
 """
 
 
@@ -205,13 +350,20 @@ def provision_cluster_worker(
     # 4. Start RPC daemon
     start_res = executor.run_code(
         node.session_name,
-        generate_worker_start_script(port=node.remote_rpc_port),
+        generate_worker_start_script(port=node.remote_rpc_port, enable_tunnel=True),
         timeout=timeout,
     )
     if not start_res.get("success"):
         raise RuntimeError(
             f"Worker RPC daemon startup failed on node '{node.session_name}': {start_res.get('stderr') or start_res.get('stdout')}"
         )
+
+    # Check for Cloudflare tunnel URL in stdout
+    import re
+    stdout_text = start_res.get("stdout") or ""
+    m = re.search(r"TUNNEL_URL:\s*(https://[a-zA-Z0-9-]+\.trycloudflare\.com)", stdout_text)
+    if m:
+        node.public_tunnel_url = m.group(1)
 
     # 5. Establish SSH tunnel
     tunnel = SSHTunnel(
@@ -231,6 +383,7 @@ def provision_cluster_worker(
         "session_name": node.session_name,
         "local_rpc_port": node.local_rpc_port,
         "remote_rpc_port": node.remote_rpc_port,
+        "public_tunnel_url": node.public_tunnel_url,
         "status": "active",
     }
 

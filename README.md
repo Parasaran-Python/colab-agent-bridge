@@ -143,7 +143,7 @@ aider --openai-api-base http://localhost:8000/v1 --openai-api-key colab --model 
 > colab-bridge down --all
 > ```
 
-### 6. Multi-Account GPU Sharding & Distributed Clustering
+### 6. Multi-Account GPU Sharding & Distributed Clustering (Cloud-Native)
 
 Need to run larger models (e.g. 32B or 70B parameters) that exceed a single free Colab GPU's 16GB VRAM? Add secondary Google accounts and pool their GPUs:
 
@@ -155,7 +155,9 @@ colab-bridge profile add personal_2
 colab-bridge status --all
 colab-bridge profile list
 
-# 3. Launch distributed cluster: shard Qwen 2.5 Coder 32B across 2x T4 GPUs (32GB pooled VRAM)
+# 3. Launch cloud-native distributed cluster: shard Qwen 2.5 Coder 32B across 2x T4 GPUs (32GB pooled VRAM)
+# Node 1 acts as coordinator, streaming secondary layers to Node 2 over Cloudflare WebSocket P2P.
+# Zero local disk, zero local RAM, zero local home upload bottleneck!
 colab-bridge cluster up Qwen/Qwen2.5-Coder-32B-Instruct --profiles default,personal_2 --gpu T4
 
 # 4. Inspect running distributed cluster status and RPC tunnels

@@ -168,6 +168,7 @@ def cluster_up(
     tensor_split: Optional[str] = typer.Option(None, "--tensor-split", help="Custom layer split ratio (e.g. 1,1)"),
     high_mem: bool = typer.Option(False, "--high-mem", help="Request high-RAM shape for VMs"),
     coordinator_bin: Optional[str] = typer.Option(None, "--coordinator-bin", help="Custom path to llama-server binary"),
+    remote_coordinator: bool = typer.Option(True, "--remote-coordinator/--local-coordinator", help="Run coordinator on Colab Node 1 (zero local disk/RAM) or locally"),
 ):
     """Deploy distributed cluster weight sharding across multiple Google Colab profiles."""
     console.print(
@@ -182,6 +183,7 @@ def cluster_up(
         base_rpc_port=rpc_base_port,
         coordinator_bin=coordinator_bin,
         tensor_split=tensor_split,
+        remote_coordinator=remote_coordinator,
     )
     try:
         res = bridge.deploy(model_name=model, wait_for_ready=True, timeout=timeout)

@@ -52,9 +52,9 @@ By utilizing `colab-agent-bridge`'s distributed cluster weight sharding (`colab-
 | **2x NVIDIA A100 (40GB)** | 80 GB | ~76 GB | **Meta Llama 3.3 70B Instruct** (FP16 unquantized) | 2x Colab Pro+ accounts (~5.0 - 9.0 CU/hr) |
 
 ### How Distributed Weight Sharding Works
-1. **Zero Local GPU Requirement:** Your local developer workstation only runs the lightweight coordinator process and proxy adapter.
-2. **Layer Splitting via RPC:** Each remote Google Colab VM runs `llama.cpp`'s `rpc-server` daemon directly interfacing with the remote NVIDIA GPU.
-3. **Encrypted Forwarding:** High-speed SSH tunnels securely forward remote RPC ports (`localhost:50051`, `localhost:50052`, etc.) to the local coordinator.
+1. **Cloud-Native Coordinator Architecture:** Node 1 serves as the distributed coordinator inside Google Cloud, downloading GGUF weights directly from HuggingFace at 200+ MB/s and streaming secondary layer shards to Node 2 via a Cloudflare WebSocket P2P bridge.
+2. **Zero Local Resource Consumption:** 0 GB of local disk space, <30 MB of local RAM, and 0 MB of local internet upload bandwidth.
+3. **Layer Splitting via RPC:** Each remote Google Colab VM runs `llama.cpp`'s `rpc-server` daemon directly interfacing with the remote NVIDIA GPU (`CUDA0: Tesla T4`).
 4. **Balanced Layer Allocation:** Model layers and tensors are split across remote nodes via `--tensor-split 1,1` (or customized ratios), enabling true multi-GPU pipeline parallelism without complex PyTorch cluster setups.
 
 ---

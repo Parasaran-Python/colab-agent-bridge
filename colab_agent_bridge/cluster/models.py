@@ -11,6 +11,8 @@ class ClusterNode:
     remote_rpc_port: int = 50052
     gpu: Optional[str] = "T4"
     status: str = "initialized"
+    role: str = "worker"
+    public_tunnel_url: Optional[str] = None
     tunnel: Optional[Any] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -21,6 +23,8 @@ class ClusterNode:
             "remote_rpc_port": self.remote_rpc_port,
             "gpu": self.gpu,
             "status": self.status,
+            "role": self.role,
+            "public_tunnel_url": self.public_tunnel_url,
         }
 
     @classmethod
@@ -32,6 +36,8 @@ class ClusterNode:
             remote_rpc_port=data.get("remote_rpc_port", 50052),
             gpu=data.get("gpu", "T4"),
             status=data.get("status", "unknown"),
+            role=data.get("role", "worker"),
+            public_tunnel_url=data.get("public_tunnel_url"),
         )
 
 
