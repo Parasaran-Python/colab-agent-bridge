@@ -101,6 +101,21 @@ def up(
 
     try:
         res = bridge.deploy(model_name=model, wait_for_ready=True, timeout=timeout)
+        if bridge.tunnel_type == "ssh":
+            if getattr(bridge, "adapter_server", None):
+                try:
+                    bridge.adapter_server.shutdown()
+                    bridge.adapter_server.server_close()
+                except Exception:
+                    pass
+            import subprocess
+            import sys
+            subprocess.Popen(
+                [sys.executable, "-m", "colab_agent_bridge.adapter", str(port), str(port + 1000)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
         console.print(
             Panel(
                 f"[bold green]✔ Model is READY and live![/bold green]\n\n"
@@ -132,6 +147,11 @@ def down(
     console.print(f"[yellow]Terminating session {session}...[/yellow]")
     from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
     SSHTunnel.cleanup_session_tunnels(session)
+    import subprocess
+    try:
+        subprocess.run(["pkill", "-f", "colab_agent_bridge.adapter"], capture_output=True)
+    except Exception:
+        pass
 
     res = mgr.stop_session(session)
     if res["success"]:
