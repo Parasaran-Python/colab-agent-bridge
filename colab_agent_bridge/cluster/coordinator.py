@@ -112,6 +112,7 @@ class ClusterCoordinator:
             )
 
         # 3. Establish SSH tunnel forwarding local_port to remote_port
+        SSHTunnel.cleanup_session_tunnels(coordinator_node.session_name)
         tunnel = SSHTunnel(
             session_name=coordinator_node.session_name,
             local_port=local_port,

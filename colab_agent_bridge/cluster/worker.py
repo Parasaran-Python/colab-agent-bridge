@@ -360,6 +360,7 @@ def provision_cluster_worker(
         node.public_tunnel_url = m.group(1)
 
     # 5. Establish SSH tunnel
+    SSHTunnel.cleanup_session_tunnels(node.session_name)
     tunnel = SSHTunnel(
         session_name=node.session_name,
         local_port=node.local_rpc_port,
