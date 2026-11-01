@@ -13,14 +13,16 @@
 ## 🌟 Key Features
 
 - **Multi-Accelerator Flexibility:** Run on any Colab hardware shape: Free & Pro NVIDIA T4 (16GB), L4 (24GB), A100 (40/80GB), H100 (80GB), Google Cloud TPU v5e/v6e, or High-Memory CPU.
+- **Multi-Account Clustering & Pooling:** Bypass Google Colab's 1-GPU limit per account. Manage multiple Google accounts with isolated credential profiles (`colab-bridge profile`), deploy concurrent GPUs across accounts, and monitor active compute from a unified dashboard.
 - **Unified OpenAI-Compatible Endpoints:** Deploy models via **vLLM**, **Ollama**, or **llama.cpp** exposing standard `/v1/models` and `/v1/chat/completions` endpoints.
 - **Hybrid Tunneling:**
   - **Native SSH Tunnel:** Zero external accounts, direct local port forward (`localhost:8000`) over encrypted Colab SSH.
   - **Cloudflare Quick Tunnel:** Instant public HTTPS endpoints (`https://*.trycloudflare.com/v1`) without firewall or port-forwarding constraints.
 - **Coding Harness Integrations:** Automatic configuration generation for **Aider**, **Cline**, **Continue**, and the **OpenAI Python SDK**.
 - **Automated VRAM Advisor:** Built-in hardware strategy engine warns when models exceed accelerator memory and recommends optimal quantization (AWQ, GPTQ, GGUF).
+- **Global Teardown & Quota Protection:** Instant nuclear teardown (`colab-bridge down --all`) stops sessions across all accounts and terminates all proxy adapters to prevent compute unit leaks.
 - **Background Keepalive:** Integrated health ping prevents Colab idle timeouts while you code.
-- **Zero-Secret Security:** Strict credential hygiene, scoped Application Default Credentials (ADC), and zero state leakage.
+- **Zero-Secret Security:** Strict credential hygiene, scoped Application Default Credentials (ADC), isolated per-profile token storage, and zero state leakage.
 - **Machine-Actionable Agent Playbook:** Includes [AGENTS.md](AGENTS.md) so autonomous AI agents can operate the bridge without human intervention.
 
 ---
@@ -134,6 +136,29 @@ aider --openai-api-base http://localhost:8000/v1 --openai-api-key colab --model 
 > ```bash
 > colab-bridge down -s agent-bridge
 > ```
+> Or terminate **all** running instances across all Google accounts in one command:
+> ```bash
+> colab-bridge down --all
+> ```
+
+### 6. Multi-Account GPU Sharding / Clustering
+
+Need multiple concurrent GPUs (e.g., serving multiple models simultaneously or sharding workloads)? Add secondary Google accounts:
+
+```bash
+# Add a second account profile
+colab-bridge profile add personal_2
+
+# Check status and compute balances across all accounts
+colab-bridge status --all
+colab-bridge profile list
+
+# Deploy a model on the second account (binds to another local port)
+colab-bridge up deepseek-ai/deepseek-coder-6.7b-instruct --profile personal_2 --port 8002
+
+# Nuclear teardown when finished
+colab-bridge down --all
+```
 
 ---
 
@@ -170,10 +195,30 @@ For comprehensive model guidance and quantization rules, see [docs/hardware_and_
 
 ## 🛠️ CLI Command Reference
 
-### `colab-bridge status`
-Inspects active Colab sessions, hardware status, and verifies Google Cloud authentication.
+### Profile Management (`colab-bridge profile`)
+
+Manage multiple isolated Google Colab accounts for concurrent GPU allocations:
+
+- **`colab-bridge profile list`**: Renders a Rich table displaying configured profiles, authenticated Google accounts, real-time CU balance, hourly usage rates, active sessions, and compute burn warnings.
+- **`colab-bridge profile add <name>`**: Scaffolds isolated profile directory (`~/.config/colab-bridge/profiles/<name>/`), symlinks host SSH keys, and triggers browser OAuth flow.
+- **`colab-bridge profile switch <name>`**: Switches the default active account profile.
+- **`colab-bridge profile remove <name>`**: Removes profile credentials and directory.
+
 ```bash
-colab-bridge status [-s <session_name>]
+colab-bridge profile list
+colab-bridge profile add personal_2
+colab-bridge profile switch personal_2
+colab-bridge profile remove personal_2
+```
+
+### `colab-bridge status`
+Inspects active Colab sessions, hardware status, and compute units across accounts.
+```bash
+# Check current profile status
+colab-bridge status [-s <session_name>] [-p <profile_name>]
+
+# Check unified dashboard across all registered Google accounts
+colab-bridge status --all
 ```
 
 ### `colab-bridge recommend`
@@ -187,19 +232,24 @@ Provisions VM, installs backend, starts server, connects tunnel, and waits for `
 ```bash
 colab-bridge up <model_name> \
   [-s <session_name>] \
+  [-p <profile_name>] \
   [-g <gpu_tier>] \
   [--tpu <tpu_tier>] \
   [--high-mem] \
   [-b <vllm|ollama|llama_cpp>] \
   [-t <ssh|cloudflare>] \
-  [-p <local_port>] \
+  [--port <local_port>] \
   [--timeout <seconds>]
 ```
 
 ### `colab-bridge down`
-Stops the tunnel and releases the Google Colab VM to immediately stop billing compute units.
+Stops tunnels and terminates Colab VM compute resources. Supports global nuclear teardown.
 ```bash
-colab-bridge down [-s <session_name>]
+# Terminate a single session on current profile
+colab-bridge down [-s <session_name>] [-p <profile_name>]
+
+# Global teardown: terminate ALL running VMs across ALL accounts
+colab-bridge down --all
 ```
 
 ### `colab-bridge harness`
@@ -218,13 +268,20 @@ colab-bridge test [-e <endpoint_url>] [-t <timeout_seconds>]
 
 ## 🐍 Python SDK
 
-You can orchestrate sessions programmatically within your own Python scripts or agents:
+You can orchestrate sessions programmatically within your own Python scripts or agents, including targeting specific multi-account profiles:
 
 ```python
 from colab_agent_bridge.client.bridge import ColabBridge
 from openai import OpenAI
 
-bridge = ColabBridge(session_name="my-worker", gpu="T4", backend="vllm")
+# Deploy under default or a specific multi-account profile
+bridge = ColabBridge(
+    session_name="my-worker",
+    gpu="T4",
+    backend="vllm",
+    profile="personal_2",  # Optional: target a specific profile
+    local_port=8002,
+)
 
 try:
     info = bridge.deploy("Qwen/Qwen2.5-Coder-7B-Instruct")
@@ -237,6 +294,7 @@ try:
     )
     print(completion.choices[0].message.content)
 finally:
+    # Teardown releases the VM and stops billing CUs
     bridge.teardown()
 ```
 
