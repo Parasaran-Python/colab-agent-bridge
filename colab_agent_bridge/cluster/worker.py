@@ -100,6 +100,23 @@ if downloaded:
     except Exception as e:
         print(f"[cluster-worker] Extraction fallback: {e}")
 
+# Pre-download websocat and cloudflared for direct P2P cloud bridge
+websocat_bin = "/content/websocat"
+if not os.path.exists(websocat_bin):
+    try:
+        urllib.request.urlretrieve("https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl", websocat_bin)
+        os.chmod(websocat_bin, 0o755)
+    except Exception:
+        pass
+
+cloudflared_bin = "/content/cloudflared"
+if not os.path.exists(cloudflared_bin):
+    try:
+        urllib.request.urlretrieve("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64", cloudflared_bin)
+        os.chmod(cloudflared_bin, 0o755)
+    except Exception:
+        pass
+
 # Also ensure python package as fallback
 try:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "llama-cpp-python[server]"], check=False)

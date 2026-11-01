@@ -198,30 +198,8 @@ class ClusterBridge:
             self.nodes[0].role = "coordinator"
             for n in self.nodes[1:]:
                 n.role = "worker"
-
             worker_nodes = self.nodes[1:]
-            if worker_nodes:
-                with ThreadPoolExecutor(max_workers=len(worker_nodes)) as executor:
-                    futures = {
-                        executor.submit(
-                            provision_cluster_worker,
-                            node=n,
-                            config=self.config,
-                            timeout=timeout,
-                            high_mem=self.high_mem,
-                            profile_mgr=self.profile_mgr,
-                        ): n for n in worker_nodes
-                    }
-                    for fut in as_completed(futures):
-                        node = futures[fut]
-                        try:
-                            fut.result()
-                        except Exception as exc:
-                            raise RuntimeError(
-                                f"Worker provisioning failed for node '{node.session_name}': {exc}"
-                            ) from exc
 
-            # Launch coordinator directly on Node 0 (downloads from HF at 200MB/s, zero local disk/RAM)
             coord_node = self.nodes[0]
             sm = SessionManager(self.config, profile=coord_node.profile)
             auth = sm.verify_auth()
@@ -229,15 +207,41 @@ class ClusterBridge:
                 raise RuntimeError(
                     f"Authentication failed for coordinator profile '{coord_node.profile}': {auth.get('error')}"
                 )
-            sess_res = sm.new_session(
-                session_name=coord_node.session_name,
-                gpu=coord_node.gpu,
-                high_mem=self.high_mem,
-            )
-            if not sess_res.get("success"):
-                raise RuntimeError(
-                    f"Colab VM allocation failed for coordinator node '{coord_node.session_name}': {sess_res.get('stderr')}"
+
+            # Provision coordinator VM and worker nodes concurrently in parallel
+            def _provision_coord_vm():
+                sess_res = sm.new_session(
+                    session_name=coord_node.session_name,
+                    gpu=coord_node.gpu,
+                    high_mem=self.high_mem,
                 )
+                if not sess_res.get("success"):
+                    raise RuntimeError(
+                        f"Colab VM allocation failed for coordinator node '{coord_node.session_name}': {sess_res.get('stderr')}"
+                    )
+                return sess_res
+
+            with ThreadPoolExecutor(max_workers=max(1, len(self.nodes))) as executor:
+                coord_fut = executor.submit(_provision_coord_vm)
+                worker_futures = {
+                    executor.submit(
+                        provision_cluster_worker,
+                        node=n,
+                        config=self.config,
+                        timeout=timeout,
+                        high_mem=self.high_mem,
+                        profile_mgr=self.profile_mgr,
+                    ): n for n in worker_nodes
+                }
+                coord_fut.result()
+                for fut in as_completed(worker_futures):
+                    node = worker_futures[fut]
+                    try:
+                        fut.result()
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"Worker provisioning failed for node '{node.session_name}': {exc}"
+                        ) from exc
 
             worker_tunnel_url = worker_nodes[0].public_tunnel_url if worker_nodes else None
             self.coordinator = ClusterCoordinator(
