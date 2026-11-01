@@ -29,7 +29,27 @@ except Exception:
     pass
 
 # Fast-path: if already installed and executable exists, skip re-download
+installed = False
 if os.path.exists(os.path.join(dest_dir, "ggml-rpc-server")) or os.path.exists("/usr/local/bin/ggml-rpc-server"):
+    installed = True
+else:
+    for item in os.listdir("/content"):
+        if item.startswith("llama-b") and item != "llama-bin":
+            if os.path.exists(os.path.join("/content", item, "ggml-rpc-server")):
+                # Ensure symlinks to dest_dir are created
+                src = os.path.join("/content", item)
+                for f in os.listdir(src):
+                    s = os.path.join(src, f)
+                    d = os.path.join(dest_dir, f)
+                    if not os.path.exists(d):
+                        try:
+                            os.symlink(s, d)
+                        except Exception:
+                            pass
+                installed = True
+                break
+
+if installed:
     print("[cluster-worker] Pre-built binary package already ready.")
     sys.exit(0)
 
@@ -53,7 +73,7 @@ if downloaded:
         with tarfile.open(tar_path, "r:gz") as tar:
             tar.extractall("/content")
         for item in os.listdir("/content"):
-            if item.startswith("llama-b"):
+            if item.startswith("llama-b") and item != "llama-bin":
                 src = os.path.join("/content", item)
                 for f in os.listdir(src):
                     s = os.path.join(src, f)
@@ -109,8 +129,19 @@ rpc_bin = (
     or "/content/llama-bin/ggml-rpc-server"
     or "/content/llama-bin/rpc-server"
     or "/usr/local/bin/ggml-rpc-server"
-    or f"{{sys.executable}} -m llama_cpp.server.rpc"
 )
+
+if not rpc_bin or not os.path.exists(rpc_bin):
+    for item in os.listdir("/content"):
+        if item.startswith("llama-b") and item != "llama-bin":
+            cand = os.path.join("/content", item, "ggml-rpc-server")
+            if os.path.exists(cand):
+                rpc_bin = cand
+                ld_path = os.path.join("/content", item)
+                break
+
+if not rpc_bin or not os.path.exists(rpc_bin):
+    rpc_bin = f"{{sys.executable}} -m llama_cpp.server.rpc"
 
 # Terminate any previously running rpc-server instances
 os.system("pkill -9 -f 'rpc-server' || true")
