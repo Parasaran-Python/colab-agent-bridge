@@ -73,6 +73,11 @@ class ProfileManager:
     def create_profile(self, name: str) -> Path:
         if name == "default":
             raise ValueError("Profile name 'default' is reserved for the system default account.")
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            raise ValueError(
+                f"Profile name '{name}' is invalid. Use alphanumeric characters, dashes, and underscores only."
+            )
         p_path = self.profiles_dir / name
         p_path.mkdir(parents=True, exist_ok=True)
         (p_path / ".config" / "colab-cli").mkdir(parents=True, exist_ok=True)

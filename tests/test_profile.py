@@ -32,6 +32,14 @@ def test_profile_create_and_remove(temp_profile_mgr):
     with pytest.raises(ValueError, match="reserved"):
         mgr.create_profile("default")
 
+    # Invalid names should raise ValueError
+    with pytest.raises(ValueError, match="invalid"):
+        mgr.create_profile("invalid/name")
+    with pytest.raises(ValueError, match="invalid"):
+        mgr.create_profile("../traversal")
+    with pytest.raises(ValueError, match="invalid"):
+        mgr.create_profile("bad name with spaces")
+
     # Remove profile
     removed = mgr.remove_profile("work_account")
     assert removed is True
