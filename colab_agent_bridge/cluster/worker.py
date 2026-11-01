@@ -193,6 +193,7 @@ cmd = (
     f"nohup {{rpc_bin}} "
     f"-p {port} "
     f"-H 0.0.0.0 "
+    f"-c "
     f"> {{log_file}} 2>&1 &"
 )
 
@@ -210,6 +211,7 @@ def generate_coordinator_start_script(
     port: int = 8000,
     tensor_split: str = "1,1",
     ngl: int = 999,
+    ctx_size: int = 8192,
 ) -> str:
     # Format HF repo identifier
     if model_name.endswith(".gguf") or ":" in model_name:
@@ -303,6 +305,8 @@ cmd = (
     f"{{rpc_flag}} "
     f"{{split_flag}} "
     f"-ngl {ngl} "
+    f"-c {ctx_size} "
+    f"--no-warmup "
     f"> {{log_file}} 2>&1 &"
 )
 
