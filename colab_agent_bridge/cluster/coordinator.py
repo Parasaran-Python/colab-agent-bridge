@@ -1,4 +1,5 @@
 import os
+import time
 import shutil
 import subprocess
 from typing import Optional, List
@@ -32,7 +33,7 @@ class ClusterCoordinator:
         return None
 
     def build_command(self) -> List[str]:
-        rpc_arg = ",".join([f"localhost:{node.local_rpc_port}" for node in self.nodes])
+        rpc_arg = ",".join([f"127.0.0.1:{node.local_rpc_port}" for node in self.nodes])
         split_arg = self.tensor_split if self.tensor_split else ",".join(["1"] * len(self.nodes))
         
         is_file = os.path.exists(self.model_name) or self.model_name.endswith(".gguf")
@@ -81,6 +82,18 @@ class ClusterCoordinator:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        time.sleep(2)
+        if self.process.poll() is not None:
+            self._log_file.flush()
+            err_output = ""
+            try:
+                with open("/tmp/cluster_coordinator.log", "r") as f:
+                    err_output = f.read()[-1000:]
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"Cluster coordinator exited prematurely (code {self.process.returncode}):\n{err_output.strip()}"
+            )
 
     def stop(self) -> None:
         if self.process and self.process.poll() is None:

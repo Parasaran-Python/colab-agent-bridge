@@ -298,7 +298,7 @@ def test_coordinator_command_generation():
     assert "9000" in cmd
     assert "--rpc" in cmd
     rpc_idx = cmd.index("--rpc")
-    assert cmd[rpc_idx + 1] == "localhost:50051,localhost:50052"
+    assert cmd[rpc_idx + 1] == "127.0.0.1:50051,127.0.0.1:50052"
     assert "--tensor-split" in cmd
     split_idx = cmd.index("--tensor-split")
     assert cmd[split_idx + 1] == "1,1"

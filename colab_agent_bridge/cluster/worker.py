@@ -10,15 +10,32 @@ from colab_agent_bridge.cluster.models import ClusterNode
 
 def generate_worker_install_script() -> str:
     return """
-import subprocess, sys, os, urllib.request, tarfile
+import subprocess, sys, os, urllib.request, tarfile, glob
 
 print("[cluster-worker] Installing RPC worker components...")
 dest_dir = "/content/llama-bin"
 os.makedirs(dest_dir, exist_ok=True)
 
+# 1. Configure system dynamic linker with CUDA and Nvidia driver libraries
+nvidia_libs = glob.glob("/usr/local/lib/python3*/dist-packages/nvidia/*/lib")
+cuda_dirs = [dest_dir, "/usr/lib64-nvidia", "/usr/local/cuda/lib64"] + nvidia_libs
+try:
+    with open("/etc/ld.so.conf.d/nvidia-llama.conf", "w") as f:
+        for d in cuda_dirs:
+            if os.path.exists(d):
+                f.write(f"{d}\\n")
+    subprocess.run(["ldconfig"], check=False)
+except Exception:
+    pass
+
+# Fast-path: if already installed and executable exists, skip re-download
+if os.path.exists(os.path.join(dest_dir, "ggml-rpc-server")) or os.path.exists("/usr/local/bin/ggml-rpc-server"):
+    print("[cluster-worker] Pre-built binary package already ready.")
+    sys.exit(0)
+
 # Download pre-built CUDA binary release for maximum performance
-cuda_tar = "https://github.com/ggerganov/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-cuda-12.8-x64.tar.gz"
-cpu_tar = "https://github.com/ggerganov/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz"
+cuda_tar = "https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-cuda-12.8-x64.tar.gz"
+cpu_tar = "https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz"
 tar_path = "/tmp/llama-bin.tar.gz"
 
 downloaded = False
@@ -75,10 +92,14 @@ print("[cluster-worker] Worker dependencies installed successfully.")
 
 def generate_worker_start_script(port: int = 50052) -> str:
     return f"""
-import os, sys, time, shutil
+import os, sys, time, shutil, glob
 
 log_file = "/content/cluster_rpc_server.log"
 ld_path = "/content/llama-bin"
+
+# Collect all nvidia cuda library directories
+nvidia_libs = glob.glob("/usr/local/lib/python3*/dist-packages/nvidia/*/lib")
+cuda_ld_paths = ":".join([ld_path, "/usr/lib64-nvidia", "/usr/local/cuda/lib64"] + nvidia_libs)
 
 # Locate rpc-server binary
 rpc_bin = (
@@ -91,8 +112,12 @@ rpc_bin = (
     or f"{{sys.executable}} -m llama_cpp.server.rpc"
 )
 
+# Terminate any previously running rpc-server instances
+os.system("pkill -9 -f 'rpc-server' || true")
+time.sleep(1)
+
 cmd = (
-    f"export LD_LIBRARY_PATH={{ld_path}}:$LD_LIBRARY_PATH && "
+    f"export LD_LIBRARY_PATH={{cuda_ld_paths}}:$LD_LIBRARY_PATH && "
     f"nohup {{rpc_bin}} "
     f"-p {port} "
     f"-H 0.0.0.0 "

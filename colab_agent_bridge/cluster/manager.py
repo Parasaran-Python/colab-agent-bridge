@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any, Union
 
 from colab_agent_bridge.config import BridgeConfig, get_config
@@ -186,8 +187,8 @@ class ClusterBridge:
             )
             self.nodes.append(node)
 
-        # 3. Provision workers across all profiles
-        for node in self.nodes:
+        # 3. Provision workers across all profiles concurrently
+        def _provision(node: ClusterNode):
             provision_cluster_worker(
                 node=node,
                 config=self.config,
@@ -196,7 +197,40 @@ class ClusterBridge:
                 profile_mgr=self.profile_mgr,
             )
 
-        # 4. Launch coordinator
+        if len(self.nodes) > 1:
+            with ThreadPoolExecutor(max_workers=len(self.nodes)) as executor:
+                futures = {executor.submit(_provision, node): node for node in self.nodes}
+                for fut in as_completed(futures):
+                    node = futures[fut]
+                    try:
+                        fut.result()
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"Worker provisioning failed for node '{node.session_name}': {exc}"
+                        ) from exc
+        else:
+            for node in self.nodes:
+                _provision(node)
+
+        # 4. Wait for all local RPC tunnel ports to be actively accepting connections
+        import socket
+        for node in self.nodes:
+            ready = False
+            start_t = time.time()
+            while time.time() - start_t < 45:
+                try:
+                    s = socket.create_connection(("127.0.0.1", node.local_rpc_port), timeout=1)
+                    s.close()
+                    ready = True
+                    break
+                except Exception:
+                    time.sleep(1)
+            if not ready:
+                raise RuntimeError(
+                    f"Local RPC tunnel port {node.local_rpc_port} failed to become reachable for node '{node.session_name}'."
+                )
+
+        # 5. Launch coordinator
         coordinator_port = self.local_port + 1000
         tensor_split = self.tensor_split or ",".join(["1"] * len(self.nodes))
         self.coordinator = ClusterCoordinator(
@@ -294,11 +328,20 @@ class ClusterBridge:
                 pass
             self.coordinator = None
 
-        # 3. Stop workers and release sessions
+        # 3. Stop workers and release sessions concurrently
         node_results: Dict[str, Any] = {}
-        for node in self.nodes:
-            res = stop_cluster_worker(node, config=self.config)
-            node_results[node.session_name] = res
+        if self.nodes:
+            with ThreadPoolExecutor(max_workers=max(1, len(self.nodes))) as executor:
+                futures = {
+                    executor.submit(stop_cluster_worker, node, config=self.config): node
+                    for node in self.nodes
+                }
+                for fut in as_completed(futures):
+                    node = futures[fut]
+                    try:
+                        node_results[node.session_name] = fut.result()
+                    except Exception as exc:
+                        node_results[node.session_name] = {"success": False, "error": str(exc)}
 
         # 4. Remove from state store
         self.state_store.delete(self.session_name)

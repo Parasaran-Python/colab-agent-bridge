@@ -32,7 +32,7 @@ class SSHTunnel(BaseTunnel):
         if target_profile and target_profile != "default":
             p_path = self.profile_mgr.get_profile_path(target_profile)
             if p_path:
-                proxy_cmd = f"HOME={p_path} {proxy_cmd}"
+                proxy_cmd = f"env HOME={p_path} {proxy_cmd}"
 
         return [
             "ssh",
