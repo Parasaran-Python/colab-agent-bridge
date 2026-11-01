@@ -539,11 +539,24 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    import sys, time
+    import sys, time, threading, urllib.request
     l_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     t_port = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
     print(f"[SmartAdapter] Starting proxy on 127.0.0.1:{l_port} -> 127.0.0.1:{t_port}...")
     srv = start_adapter_server(listen_port=l_port, target_port=t_port)
+
+    def _keepalive_loop():
+        while True:
+            time.sleep(120)
+            try:
+                req = urllib.request.Request(f"http://127.0.0.1:{t_port}/v1/models")
+                urllib.request.urlopen(req, timeout=5)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_keepalive_loop, daemon=True)
+    t.start()
+
     try:
         while True:
             time.sleep(1)

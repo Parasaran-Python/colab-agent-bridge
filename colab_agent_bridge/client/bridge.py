@@ -75,7 +75,11 @@ class ColabBridge:
 
         # 3. Launch model server
         start_script = backend.generate_start_script(model_name=model_name, port=8000)
-        self.executor.run_code(self.session_name, start_script, timeout=timeout)
+        start_res = self.executor.run_code(self.session_name, start_script, timeout=timeout)
+        if not start_res.get("success"):
+            raise RuntimeError(
+                f"Model server startup failed on Colab VM: {start_res.get('stderr') or start_res.get('stdout')}"
+            )
 
         # 4. Open tunnel and smart adapter
         if self.tunnel_type == "cloudflare":
@@ -105,6 +109,10 @@ class ColabBridge:
         health_info = {"ready": True}
         if wait_for_ready:
             health_info = check_health(self.endpoint_url, timeout_seconds=timeout)
+            if not health_info.get("ready"):
+                raise RuntimeError(
+                    f"Model server health check failed: {health_info.get('error', 'Timed out waiting for /v1/models')}"
+                )
 
         # 6. Start keepalive loop in background
         self._start_keepalive()

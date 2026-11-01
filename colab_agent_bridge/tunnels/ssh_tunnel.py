@@ -60,18 +60,29 @@ class SSHTunnel(BaseTunnel):
 
     def start(self) -> str:
         cmd = self.build_ssh_command()
+        self._log_file = open("/tmp/colab_bridge_ssh.log", "a")
         self.process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=self._log_file,
             start_new_session=True,
         )
         time.sleep(2)
         if self.process.poll() is not None:
             stderr = ""
-            if self.process.stderr:
-                err = self.process.stderr.read()
-                stderr = err.decode("utf-8", errors="replace") if isinstance(err, bytes) else str(err)
+            if getattr(self.process, "stderr", None) and hasattr(self.process.stderr, "read"):
+                try:
+                    err = self.process.stderr.read()
+                    stderr = err.decode("utf-8", errors="replace") if isinstance(err, bytes) else str(err)
+                except Exception:
+                    pass
+            if not stderr and hasattr(self, "_log_file"):
+                try:
+                    self._log_file.flush()
+                    with open("/tmp/colab_bridge_ssh.log", "r") as f:
+                        stderr = f.read()[-1000:]
+                except Exception:
+                    pass
             raise RuntimeError(
                 f"SSH tunnel process exited immediately (code {self.process.returncode}): {stderr.strip()}"
             )
