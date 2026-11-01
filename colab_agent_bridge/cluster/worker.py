@@ -130,6 +130,13 @@ os.system("pkill -9 -f 'websocat' || true")
 os.system("pkill -9 -f 'cloudflared' || true")
 time.sleep(1)
 
+# Remove stale cloudflared log to ensure fresh tunnel URL capture
+if os.path.exists("/content/cloudflared.log"):
+    try:
+        os.remove("/content/cloudflared.log")
+    except Exception:
+        pass
+
 # Start websocat bridge (TCP port -> WebSocket port 18080)
 if os.path.exists("/content/websocat"):
     os.system(f"nohup /content/websocat -b ws-l:127.0.0.1:18080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
@@ -145,9 +152,9 @@ for _ in range(30):
     if os.path.exists("/content/cloudflared.log"):
         with open("/content/cloudflared.log", "r") as f:
             content = f.read()
-            m = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", content)
-            if m:
-                tunnel_url = m.group(0)
+            matches = re.findall(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", content)
+            if matches:
+                tunnel_url = matches[-1]
                 print(f"[cluster-worker] TUNNEL_URL: {{tunnel_url}}")
                 break
 """
