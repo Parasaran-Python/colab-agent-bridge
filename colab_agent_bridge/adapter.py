@@ -101,7 +101,7 @@ def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
     }
 
 
-DISALLOWED_TOOLS = {"skill", "subagent", "question"}
+DISALLOWED_TOOLS = {"skill", "subagent", "question", "execute"}
 
 
 def _is_tool_dict(item: Any) -> bool:
@@ -536,3 +536,17 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(err_msg)))
             self.end_headers()
             self.wfile.write(err_msg)
+
+
+if __name__ == "__main__":
+    import sys
+    l_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    t_port = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
+    print(f"[SmartAdapter] Starting proxy on 127.0.0.1:{l_port} -> 127.0.0.1:{t_port}...")
+    srv = start_adapter_server(listen_port=l_port, target_port=t_port)
+    try:
+        srv.serve_forever()
+    except (KeyboardInterrupt, SystemExit):
+        srv.shutdown()
+        srv.server_close()
+
