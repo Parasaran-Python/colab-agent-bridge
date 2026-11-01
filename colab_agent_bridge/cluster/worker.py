@@ -132,7 +132,7 @@ time.sleep(1)
 
 # Start websocat bridge (TCP port -> WebSocket port 18080)
 if os.path.exists("/content/websocat"):
-    os.system("nohup /content/websocat -b -E ws-l:127.0.0.1:18080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
+    os.system(f"nohup /content/websocat -b ws-l:127.0.0.1:18080 tcp:127.0.0.1:{port} > /content/websocat.log 2>&1 &")
 
 # Start cloudflared tunnel
 if os.path.exists("/content/cloudflared"):
