@@ -2,26 +2,37 @@ import subprocess
 from typing import Optional, List, Dict, Any
 from colab_agent_bridge.config import BridgeConfig, get_config
 from colab_agent_bridge.core.hardware import validate_accelerator
+from colab_agent_bridge.core.profile import ProfileManager
 
 
 class SessionManager:
-    def __init__(self, config: Optional[BridgeConfig] = None):
+    def __init__(
+        self,
+        config: Optional[BridgeConfig] = None,
+        profile: Optional[str] = None,
+    ):
         self.config = config or get_config()
+        self.profile = profile
+        self.profile_mgr = ProfileManager()
+
+    def _get_env(self) -> Dict[str, str]:
+        return self.profile_mgr.get_profile_env(self.profile)
 
     def _build_base_cmd(self) -> List[str]:
         return [self.config.colab_cli_path, f"--auth={self.config.auth_strategy}"]
 
     def verify_auth(self) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["sessions"]
+        env = self._get_env()
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            res = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)
             if res.returncode == 0:
                 return {"authenticated": True, "output": res.stdout.strip()}
 
             # If default strategy failed, check alternative strategy (e.g. oauth2 if adc failed)
             alt_strategy = "oauth2" if self.config.auth_strategy == "adc" else "adc"
             alt_cmd = [self.config.colab_cli_path, f"--auth={alt_strategy}", "sessions"]
-            alt_res = subprocess.run(alt_cmd, capture_output=True, text=True, check=False)
+            alt_res = subprocess.run(alt_cmd, env=env, capture_output=True, text=True, check=False)
             if alt_res.returncode == 0:
                 self.config.auth_strategy = alt_strategy
                 return {"authenticated": True, "output": alt_res.stdout.strip(), "auto_switched": alt_strategy}
@@ -64,7 +75,7 @@ class SessionManager:
         if high_mem:
             cmd.append("--high-mem")
 
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         out = (res.stderr + " " + res.stdout).lower()
         already_exists = "already exists" in out or "allocation refused" in out
         return {
@@ -77,7 +88,7 @@ class SessionManager:
 
     def stop_session(self, session_name: str) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["stop", "-s", session_name]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         return {
             "success": res.returncode == 0,
             "session_name": session_name,
@@ -87,7 +98,7 @@ class SessionManager:
 
     def list_sessions(self) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["sessions"]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         return {
             "success": res.returncode == 0,
             "stdout": res.stdout.strip(),
@@ -98,9 +109,12 @@ class SessionManager:
         cmd = self._build_base_cmd() + ["status"]
         if session_name:
             cmd.extend(["-s", session_name])
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         return {
             "success": res.returncode == 0,
             "stdout": res.stdout.strip(),
             "stderr": res.stderr.strip(),
         }
+
+    def get_usage(self) -> Dict[str, Any]:
+        return self.profile_mgr.query_usage(self.profile)

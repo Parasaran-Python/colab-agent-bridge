@@ -3,6 +3,7 @@ import time
 from typing import Optional, List
 from colab_agent_bridge.config import BridgeConfig, get_config
 from colab_agent_bridge.tunnels.base import BaseTunnel
+from colab_agent_bridge.core.profile import ProfileManager
 
 
 class SSHTunnel(BaseTunnel):
@@ -12,16 +13,23 @@ class SSHTunnel(BaseTunnel):
         local_port: int = 8000,
         remote_port: int = 8000,
         config: Optional[BridgeConfig] = None,
+        profile: Optional[str] = None,
     ):
         self.session_name = session_name
         self.local_port = local_port
         self.remote_port = remote_port
         self.config = config or get_config()
+        self.profile = profile
         self.process: Optional[subprocess.Popen] = None
 
     def build_ssh_command(self) -> List[str]:
         # Uses standard OpenSSH with colab ssh --proxy-mode as ProxyCommand
         proxy_cmd = f"{self.config.colab_cli_path} --auth={self.config.auth_strategy} ssh --proxy-mode -s {self.session_name}"
+        if self.profile and self.profile != "default":
+            p_path = ProfileManager().get_profile_path(self.profile)
+            if p_path:
+                proxy_cmd = f"HOME={p_path} {proxy_cmd}"
+
         return [
             "ssh",
             "-F",

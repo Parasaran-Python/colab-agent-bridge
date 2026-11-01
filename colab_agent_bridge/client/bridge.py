@@ -23,6 +23,7 @@ class ColabBridge:
         tunnel_type: str = "ssh",
         local_port: int = 8000,
         config: Optional[BridgeConfig] = None,
+        profile: Optional[str] = None,
     ):
         self.session_name = session_name
         self.gpu = gpu
@@ -32,9 +33,10 @@ class ColabBridge:
         self.tunnel_type = tunnel_type
         self.local_port = local_port
         self.config = config or get_config()
+        self.profile = profile
 
-        self.session_mgr = SessionManager(self.config)
-        self.executor = RemoteExecutor(self.config)
+        self.session_mgr = SessionManager(self.config, profile=self.profile)
+        self.executor = RemoteExecutor(self.config, profile=self.profile)
         self.tunnel = None
         self.adapter_server = None
         self.endpoint_url: Optional[str] = None
@@ -86,6 +88,7 @@ class ColabBridge:
                 local_port=tunnel_port,
                 remote_port=8000,
                 config=self.config,
+                profile=self.profile,
             )
             self.tunnel.start()
             self.adapter_server = start_adapter_server(
