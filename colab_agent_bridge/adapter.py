@@ -76,6 +76,32 @@ def _normalize_tool_arguments(name: str, args: Any) -> Any:
 
 def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
     norm_name = TOOL_ALIASES.get(name.lower().strip(), name)
+    parsed_dict = None
+    if isinstance(arguments, dict):
+        parsed_dict = dict(arguments)
+    elif isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+            if isinstance(parsed, dict):
+                parsed_dict = parsed
+        except Exception:
+            pass
+
+    # Auto-convert edit with empty oldString/old_string to write
+    if parsed_dict is not None and norm_name == "edit":
+        old_str = parsed_dict.get("oldString")
+        if old_str is None:
+            old_str = parsed_dict.get("old_string")
+        new_str = parsed_dict.get("newString") or parsed_dict.get("new_string") or parsed_dict.get("content")
+        if (old_str == "" or old_str is None) and new_str:
+            norm_name = "write"
+            parsed_dict["content"] = new_str
+            parsed_dict.pop("oldString", None)
+            parsed_dict.pop("newString", None)
+            parsed_dict.pop("old_string", None)
+            parsed_dict.pop("new_string", None)
+        arguments = parsed_dict
+
     if isinstance(arguments, dict):
         norm_args = _normalize_tool_arguments(norm_name, arguments)
         arg_str = json.dumps(norm_args)
@@ -101,13 +127,15 @@ def _make_tool_call(name: str, arguments: Any) -> Dict[str, Any]:
     }
 
 
-DISALLOWED_TOOLS = {"skill", "subagent", "question", "execute"}
+DISALLOWED_TOOLS = {"skill", "subagent", "question", "execute", "websearch", "webfetch", "fetch"}
 
 
 def _is_tool_dict(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
     name = item.get("name") or item.get("function_name") or item.get("tool")
+    if not name and isinstance(item.get("function"), str):
+        name = item.get("function")
     args = item.get("arguments", item.get("parameters", item.get("input")))
     if name and isinstance(name, str) and args is not None:
         return True
@@ -126,6 +154,8 @@ def _extract_from_dict(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not _is_tool_dict(item):
         return None
     name = item.get("name") or item.get("function_name") or item.get("tool")
+    if not name and isinstance(item.get("function"), str):
+        name = item.get("function")
     if name:
         args = item.get("arguments", item.get("parameters", item.get("input", {})))
         return _make_tool_call(name, args)
@@ -151,6 +181,9 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
         return None
 
     cleaned = content.strip()
+    if "</think>" in cleaned:
+        cleaned = cleaned.split("</think>")[-1].strip()
+
     calls: List[Dict[str, Any]] = []
 
     # Strategy 1: Check for XML <tool_call> tags
@@ -158,6 +191,28 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
     if xml_matches:
         for m in xml_matches:
             m_clean = m.strip()
+
+            # 1a. Check for function= parameter= XML syntax (Qwen / Ornith)
+            fn_tag_match = re.search(r"<function=([a-zA-Z0-9_\-]+)>\s*(.*?)\s*</function>", m_clean, re.DOTALL)
+            if fn_tag_match:
+                fname = fn_tag_match.group(1).strip()
+                body = fn_tag_match.group(2)
+                params = {}
+                for p_match in re.finditer(r"<parameter=([a-zA-Z0-9_\-]+)>\s*(.*?)\s*</parameter>", body, re.DOTALL):
+                    p_name = p_match.group(1).strip()
+                    p_val = p_match.group(2).strip()
+                    if p_val.startswith(("{", "[", '"', "true", "false", "null")) or p_val.isdigit():
+                        try:
+                            params[p_name] = _robust_json_loads(p_val)
+                        except Exception:
+                            params[p_name] = p_val
+                    else:
+                        params[p_name] = p_val
+                c = _make_tool_call(fname, params)
+                if c:
+                    calls.append(c)
+                    continue
+
             if m_clean.startswith("```"):
                 m_inner = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", m_clean)
                 if m_inner:
@@ -175,6 +230,27 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
                         calls.append(c)
             except Exception:
                 pass
+        if calls:
+            return calls
+
+    # Strategy 1b: Check for naked <function=...> ... </function>
+    naked_fn_matches = re.findall(r"<function=([a-zA-Z0-9_\-]+)>\s*(.*?)\s*</function>", cleaned, re.DOTALL)
+    if naked_fn_matches:
+        for fname, body in naked_fn_matches:
+            params = {}
+            for p_match in re.finditer(r"<parameter=([a-zA-Z0-9_\-]+)>\s*(.*?)\s*</parameter>", body, re.DOTALL):
+                p_name = p_match.group(1).strip()
+                p_val = p_match.group(2).strip()
+                if p_val.startswith(("{", "[", '"', "true", "false", "null")) or p_val.isdigit():
+                    try:
+                        params[p_name] = _robust_json_loads(p_val)
+                    except Exception:
+                        params[p_name] = p_val
+                else:
+                    params[p_name] = p_val
+            c = _make_tool_call(fname, params)
+            if c:
+                calls.append(c)
         if calls:
             return calls
 
@@ -267,20 +343,38 @@ def normalize_chat_completion_response(response: Dict[str, Any]) -> Dict[str, An
             for tc in tool_calls:
                 fn = tc.get("function", {})
                 tname = fn.get("name", "")
-                if tname and tname.lower().strip() in TOOL_ALIASES:
-                    norm = TOOL_ALIASES[tname.lower().strip()]
+                norm = TOOL_ALIASES.get(tname.lower().strip(), tname) if tname else ""
+                arg_raw = fn.get("arguments")
+                if isinstance(arg_raw, str):
+                    try:
+                        parsed_args = json.loads(arg_raw)
+                        # Check edit with empty oldString -> write
+                        if norm == "edit" and isinstance(parsed_args, dict):
+                            old_str = parsed_args.get("oldString")
+                            if old_str is None:
+                                old_str = parsed_args.get("old_string")
+                            new_str = parsed_args.get("newString") or parsed_args.get("new_string") or parsed_args.get("content")
+                            if (old_str == "" or old_str is None) and new_str:
+                                norm = "write"
+                                parsed_args["content"] = new_str
+                                parsed_args.pop("oldString", None)
+                                parsed_args.pop("newString", None)
+                                parsed_args.pop("old_string", None)
+                                parsed_args.pop("new_string", None)
+                        norm_args = _normalize_tool_arguments(norm, parsed_args)
+                        fn["arguments"] = json.dumps(norm_args)
+                    except Exception:
+                        pass
+                if norm:
                     fn["name"] = norm
-                    arg_raw = fn.get("arguments")
-                    if isinstance(arg_raw, str):
-                        try:
-                            parsed_args = json.loads(arg_raw)
-                            norm_args = _normalize_tool_arguments(norm, parsed_args)
-                            fn["arguments"] = json.dumps(norm_args)
-                        except Exception:
-                            pass
             continue
 
         if content and isinstance(content, str):
+            if "<think>" in content and "</think>" in content:
+                think_part = content.split("</think>")[0].split("<think>")[-1].strip()
+                if think_part and not message.get("reasoning_content"):
+                    message["reasoning_content"] = think_part
+
             extracted = try_extract_tool_calls(content)
             if extracted:
                 message["tool_calls"] = extracted
@@ -325,6 +419,7 @@ def normalize_chat_completion_stream_chunk(chunk_dict: Dict[str, Any]) -> Dict[s
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+    allow_reuse_address = True
 
 
 def start_adapter_server(listen_port: int, target_port: int) -> ThreadedHTTPServer:
@@ -340,6 +435,30 @@ def start_adapter_server(listen_port: int, target_port: int) -> ThreadedHTTPServ
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     return server
+
+
+_upstream_model_cache: Dict[str, Any] = {"model": None, "timestamp": 0.0}
+
+
+def _get_upstream_model(target_port: int) -> Optional[str]:
+    import time
+    now = time.time()
+    if _upstream_model_cache["model"] and (now - _upstream_model_cache["timestamp"] < 30):
+        return _upstream_model_cache["model"]
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{target_port}/v1/models")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            models = data.get("data", [])
+            if models and isinstance(models, list):
+                model_id = models[0].get("id")
+                if model_id:
+                    _upstream_model_cache["model"] = model_id
+                    _upstream_model_cache["timestamp"] = now
+                    return model_id
+    except Exception:
+        pass
+    return _upstream_model_cache.get("model")
 
 
 class SmartAdapterHandler(BaseHTTPRequestHandler):
@@ -391,6 +510,17 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                         if tname.lower() not in DISALLOWED_TOOLS:
                             filtered_tools.append(t)
                     req_json["tools"] = filtered_tools
+
+                # Auto-align model name with active upstream model if requested model differs
+                active_model = _get_upstream_model(self.target_port)
+                if active_model and req_json.get("model") and req_json.get("model") != active_model:
+                    req_json["model"] = active_model
+
+                # Enforce minimum 16k context window for Ollama so prompts are never truncated
+                if "options" not in req_json or not isinstance(req_json.get("options"), dict):
+                    req_json["options"] = {}
+                if "num_ctx" not in req_json["options"]:
+                    req_json["options"]["num_ctx"] = 16384
 
                 forward_body = json.dumps(req_json).encode("utf-8")
             except Exception:

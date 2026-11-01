@@ -32,7 +32,7 @@ class SSHTunnel(BaseTunnel):
         if target_profile and target_profile != "default":
             p_path = self.profile_mgr.get_profile_path(target_profile)
             if p_path:
-                proxy_cmd = f"HOME={p_path} {proxy_cmd}"
+                proxy_cmd = f"env HOME={p_path} {proxy_cmd}"
 
         return [
             "ssh",
@@ -60,7 +60,8 @@ class SSHTunnel(BaseTunnel):
 
     def start(self) -> str:
         cmd = self.build_ssh_command()
-        self._log_file = open("/tmp/colab_bridge_ssh.log", "a")
+        log_path = f"/tmp/colab_bridge_ssh_{self.session_name}.log"
+        self._log_file = open(log_path, "w")
         self.process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -79,7 +80,7 @@ class SSHTunnel(BaseTunnel):
             if not stderr and hasattr(self, "_log_file"):
                 try:
                     self._log_file.flush()
-                    with open("/tmp/colab_bridge_ssh.log", "r") as f:
+                    with open(log_path, "r") as f:
                         stderr = f.read()[-1000:]
                 except Exception:
                     pass
@@ -95,6 +96,7 @@ class SSHTunnel(BaseTunnel):
                 self.process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        self.cleanup_session_tunnels(self.session_name)
 
     @classmethod
     def cleanup_session_tunnels(cls, session_name: str) -> None:
@@ -103,7 +105,7 @@ class SSHTunnel(BaseTunnel):
         import signal
         try:
             res = subprocess.run(
-                ["pgrep", "-f", f"-s {session_name}"],
+                ["pgrep", "-f", "--", f"-s {session_name}"],
                 capture_output=True,
                 text=True,
             )

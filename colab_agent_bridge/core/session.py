@@ -85,6 +85,19 @@ class SessionManager:
         res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         out = (res.stderr + " " + res.stdout).lower()
         already_exists = "already exists" in out or "allocation refused" in out
+        if not (res.returncode == 0 or already_exists):
+            try:
+                sessions_res = self.list_sessions()
+                if sessions_res.get("success") and session_name in sessions_res.get("stdout", ""):
+                    return {
+                        "success": True,
+                        "session_name": session_name,
+                        "stdout": f"Session '{session_name}' is already active.",
+                        "stderr": "",
+                        "returncode": 0,
+                    }
+            except Exception:
+                pass
         return {
             "success": res.returncode == 0 or already_exists,
             "session_name": session_name,

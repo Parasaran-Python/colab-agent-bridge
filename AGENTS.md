@@ -38,9 +38,15 @@ Environment configuration is read from `.env` in the repository root or system e
 > ```bash
 > /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down -s <session_name>
 > ```
+> Or for distributed sharded clusters:
+> ```bash
+> /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster down --session <session_name>
+> ```
 > Or when managing multi-account / cluster sessions, perform a global teardown:
 > ```bash
 > /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down --all
+> # or
+> /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster down --all
 > ```
 > In Python code, ALWAYS wrap bridge operations in a `try...finally` block that invokes `bridge.teardown()`.
 
@@ -182,6 +188,74 @@ When your reasoning, editing, or evaluation tasks finish:
 
 ---
 
+### Section 4.2: Distributed Cluster Weight Sharding SOP (Multi-Node Cloud-Native)
+
+When operating on large 32B or 70B parameter models that exceed single-GPU VRAM limits, follow this distributed sharding workflow across multiple authenticated Google profiles.
+
+> [!TIP]
+> **Cloud-Native Coordinator Architecture (Zero Local Resource Footprint):**
+> By default (`--remote-coordinator`), Node 1 serves as the distributed coordinator inside Google Cloud, downloading GGUF weights directly from HuggingFace at 200+ MB/s and streaming secondary layer shards to Node 2 via a direct Cloudflare WebSocket P2P bridge.
+> - **Local Disk Usage:** **0 GB** (no model files downloaded to host drive).
+> - **Local RAM Usage:** **< 30 MB** (no model tensors loaded in host memory).
+> - **Local Upload Bandwidth:** **0 MB** (bypasses home internet upload limits).
+> - **Startup Time:** Slashed from ~80 minutes down to **~2–3 minutes total**.
+
+```
++------------------+     +-------------------+     +------------------+
+| 1. Profile &     | --> | 2. Deploy Sharded | --> | 3. Verify Health |
+|    Memory Check  |     |    Cluster (Up)   |     |    & RPC Tunnels |
++------------------+     +-------------------+     +------------------+
+                                                             |
++------------------+     +-------------------+               |
+| 5. Mandatory     | <-- | 4. Route Harness  | <-------------+
+|    Cluster Down  |     |    Traffic        |
++------------------+     +-------------------+
+```
+
+#### Step 1: Check Profile Balances and Memory Fit
+Verify participating profiles are authenticated and check pooled VRAM:
+```bash
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge profile list
+```
+*Note: 2x T4 GPUs provide 32GB pooled VRAM (fits Qwen 2.5 Coder 32B quantized). 4x T4 GPUs provide 64GB pooled VRAM (fits Llama 3.3 70B quantized).*
+
+#### Step 2: Deploy Distributed Cluster
+Launch worker RPC daemons across remote profiles and establish cloud-native coordinator:
+```bash
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster up \
+  Qwen/Qwen2.5-Coder-32B-Instruct \
+  --profiles default,sitonam \
+  --session cluster-bridge \
+  --gpu T4 \
+  --port 8000 \
+  --timeout 600
+```
+*(Optionally pass `--local-coordinator` if you wish to run the coordinator binary locally on host).*
+
+#### Step 3: Inspect Cluster Status & RPC Tunnels
+```bash
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster status
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge test --endpoint http://localhost:8000/v1
+```
+
+#### Step 4: Route Coding Agent Traffic
+Export standard environment variables:
+```bash
+export OPENAI_BASE_URL="http://localhost:8000/v1"
+export OPENAI_API_KEY="colab"
+export MODEL_NAME="Qwen/Qwen2.5-Coder-32B-Instruct"
+```
+
+#### Step 5: Mandatory Cluster Teardown
+Release all worker VMs and close tunnels across all participating profiles:
+```bash
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster down --session cluster-bridge
+# Or global nuclear teardown:
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge cluster down --all
+```
+
+---
+
 ## 5. Programmatic Python SDK Integration
 
 When building an autonomous Python loop, use `colab_agent_bridge` directly.
@@ -263,6 +337,38 @@ data = resp.json()
 print(data["choices"][0]["message"]["content"])
 ```
 
+### Pattern: Programmatic Cluster Weight Sharding
+
+```python
+from colab_agent_bridge.cluster import ClusterBridge
+from openai import OpenAI
+
+cluster = ClusterBridge(
+    session_name="agent-sharded-32b",
+    profiles=["default", "personal_2"],
+    gpu="T4",
+    local_port=8000,
+)
+
+try:
+    print("[Agent] Deploying sharded cluster across profiles...")
+    result = cluster.deploy("Qwen/Qwen2.5-Coder-32B-Instruct", wait_for_ready=True)
+    print(f"[Agent] Serving 32B model at {result['endpoint_url']} ({result['total_vram_gb']}GB pooled VRAM)")
+
+    client = OpenAI(base_url=result["endpoint_url"], api_key="colab")
+    response = client.chat.completions.create(
+        model="Qwen/Qwen2.5-Coder-32B-Instruct",
+        messages=[{"role": "user", "content": "Analyze and refactor the repository architecture."}],
+        temperature=0.1,
+    )
+    print("[Agent Output]:")
+    print(response.choices[0].message.content)
+
+finally:
+    print("[Agent] Tearing down cluster to preserve compute units...")
+    cluster.teardown()
+```
+
 ---
 
 ## 6. Diagnostic & Error Recovery Playbook
@@ -276,6 +382,9 @@ print(data["choices"][0]["message"]["content"])
 | `Health check timed out.` | Backend took longer than 600s to download weights, or crashed due to CUDA OOM. | Check Colab VM logs: run `/run/media/parasaran/Dev/SDK/python/install/bin/colab exec -s <session> -- "cat /content/vllm_server.log"`. Use quantized model (AWQ) or `backend="llama_cpp"`. |
 | `Connection refused: localhost:8000` | SSH tunnel dropped or failed to bind. | Rerun `colab-bridge status -s <session>`. If VM is up, re-establish tunnel or switch to `--tunnel cloudflare`. |
 | `Kernel disconnected / timeout` | Colab idle timeout triggered after prolonged inactivity. | `ColabBridge` runs an automatic keepalive thread every 180s. Ensure `keepalive_ping` is not blocked. |
+| `Distributed cluster weight sharding requires at least two profiles` | Single profile supplied to `cluster up`. | Specify at least 2 distinct authenticated profiles (e.g. `--profiles default,personal_2`). |
+| `Cluster coordinator binary 'llama-server' not found in PATH` | Local `llama-server` binary missing. | Install llama.cpp with RPC support or set `--coordinator-bin` or `LLAMA_SERVER_PATH`. |
+| `Cluster node unreachable / RPC connection refused` | Remote RPC daemon crashed or tunnel port blocked. | Inspect remote log: `colab exec -s <session>-<profile> -- "cat /content/cluster_rpc_server.log"`. |
 
 ---
 
@@ -283,13 +392,17 @@ print(data["choices"][0]["message"]["content"])
 
 For autonomous agent code generation and repository editing:
 
-- **Fast / Lightweight (T4 16GB, L4 24GB):**
+- **Fast / Lightweight & Reasoning (T4 16GB, L4 24GB):**
+  - `cyankiwi/Ornith-1.5-9B-AWQ-INT4` / `ornith:9b` (Chain-of-Thought reasoning + tool calls on T4)
   - `Qwen/Qwen2.5-Coder-7B-Instruct` (Available in AWQ / GPTQ)
   - `deepseek-ai/deepseek-coder-6.7b-instruct`
   - `meta-llama/Llama-3.1-8B-Instruct`
 - **Mid-Tier / Complex Code Reasoning (L4 24GB, A100 40GB):**
   - `Qwen/Qwen2.5-Coder-14B-Instruct`
   - `Qwen/Qwen2.5-Coder-32B-Instruct-AWQ`
+- **Distributed Sharded Clusters (Multi-Account Free / Pro T4 & L4):**
+  - `Qwen/Qwen2.5-Coder-32B-Instruct` (2x T4 GPUs = 32GB pooled VRAM; full 32B coding reasoning on free-tier accounts)
+  - `meta-llama/Llama-3.3-70B-Instruct-AWQ` (4x T4 GPUs = 64GB pooled VRAM; 70B parameter frontier reasoning)
 - **Heavyweight / Architectural Planning (A100 80GB, H100 80GB):**
   - `Qwen/Qwen2.5-Coder-32B-Instruct` (Unquantized FP16)
   - `meta-llama/Llama-3.3-70B-Instruct-AWQ`

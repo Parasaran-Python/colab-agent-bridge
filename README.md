@@ -13,8 +13,10 @@
 ## 🌟 Key Features
 
 - **Multi-Accelerator Flexibility:** Run on any Colab hardware shape: Free & Pro NVIDIA T4 (16GB), L4 (24GB), A100 (40/80GB), H100 (80GB), Google Cloud TPU v5e/v6e, or High-Memory CPU.
+- **Distributed Cluster Weight Sharding (RPC):** Pool GPUs across multiple Google Colab accounts (e.g., 2x T4 = 32GB pooled VRAM, 4x T4 = 64GB pooled VRAM). Physically shards large model weights (such as Qwen 2.5 Coder 32B or Llama 3.3 70B) across remote nodes via `llama.cpp` RPC servers and multi-tunnel orchestration.
 - **Multi-Account Clustering & Pooling:** Bypass Google Colab's 1-GPU limit per account. Manage multiple Google accounts with isolated credential profiles (`colab-bridge profile`), deploy concurrent GPUs across accounts, and monitor active compute from a unified dashboard.
 - **Unified OpenAI-Compatible Endpoints:** Deploy models via **vLLM**, **Ollama**, or **llama.cpp** exposing standard `/v1/models` and `/v1/chat/completions` endpoints.
+- **Smart Proxy Adapter:** Transparently normalizes tool aliases (e.g. `create` -> `write`), handles degraded JSON in markdown fences, parses Qwen/Ornith `<tool_call>` XML formats, and extracts `<think>` reasoning streams into OpenAI `reasoning_content`.
 - **Hybrid Tunneling:**
   - **Native SSH Tunnel:** Zero external accounts, direct local port forward (`localhost:8000`) over encrypted Colab SSH.
   - **Cloudflare Quick Tunnel:** Instant public HTTPS endpoints (`https://*.trycloudflare.com/v1`) without firewall or port-forwarding constraints.
@@ -141,23 +143,29 @@ aider --openai-api-base http://localhost:8000/v1 --openai-api-key colab --model 
 > colab-bridge down --all
 > ```
 
-### 6. Multi-Account GPU Sharding / Clustering
+### 6. Multi-Account GPU Sharding & Distributed Clustering (Cloud-Native)
 
-Need multiple concurrent GPUs (e.g., serving multiple models simultaneously or sharding workloads)? Add secondary Google accounts:
+Need to run larger models (e.g. 32B or 70B parameters) that exceed a single free Colab GPU's 16GB VRAM? Add secondary Google accounts and pool their GPUs:
 
 ```bash
-# Add a second account profile
+# 1. Add secondary account profiles
 colab-bridge profile add personal_2
 
-# Check status and compute balances across all accounts
+# 2. Check status and compute balances across all accounts
 colab-bridge status --all
 colab-bridge profile list
 
-# Deploy a model on the second account (binds to another local port)
-colab-bridge up deepseek-ai/deepseek-coder-6.7b-instruct --profile personal_2 --port 8002
+# 3. Launch cloud-native distributed cluster: shard Qwen 2.5 Coder 32B across 2x T4 GPUs (32GB pooled VRAM)
+# Node 1 acts as coordinator, streaming secondary layers to Node 2 over Cloudflare WebSocket P2P.
+# Zero local disk, zero local RAM, zero local home upload bottleneck!
+colab-bridge cluster up Qwen/Qwen2.5-Coder-32B-Instruct --profiles default,personal_2 --gpu T4
 
-# Nuclear teardown when finished
-colab-bridge down --all
+# 4. Inspect running distributed cluster status and RPC tunnels
+colab-bridge cluster status
+colab-bridge cluster list
+
+# 5. Tear down cluster when done (or run 'colab-bridge down --all')
+colab-bridge cluster down --session cluster-bridge
 ```
 
 ---
@@ -209,6 +217,29 @@ colab-bridge profile list
 colab-bridge profile add personal_2
 colab-bridge profile switch personal_2
 colab-bridge profile remove personal_2
+```
+
+### Cluster Management (`colab-bridge cluster`)
+
+Manage distributed cluster weight sharding across multiple Google Colab accounts:
+
+- **`colab-bridge cluster up <model_name> --profiles <p1,p2,...>`**: Provisions remote Colab VMs on each profile, launches `llama.cpp` RPC daemon workers, establishes SSH tunnels, spawns the local cluster coordinator with `--rpc` and layer distribution, and connects the smart proxy adapter.
+- **`colab-bridge cluster down`**: Gracefully terminates coordinator, tunnels, and releases worker VMs across all participating profiles (or all clusters with `--all`).
+- **`colab-bridge cluster list`**: Lists all active and tracked distributed clusters, models, pooled VRAM, and endpoints.
+- **`colab-bridge cluster status`**: Displays detailed cluster breakdown including individual node sessions, local RPC forwarding ports, layer split, and health.
+
+```bash
+# Spin up sharded 32B model across 2 profiles
+colab-bridge cluster up Qwen/Qwen2.5-Coder-32B-Instruct --profiles default,personal_2 --gpu T4
+
+# Check active cluster status and RPC tunnels
+colab-bridge cluster status
+
+# List all clusters
+colab-bridge cluster list
+
+# Release cluster resources
+colab-bridge cluster down --session cluster-bridge
 ```
 
 ### `colab-bridge status`
@@ -296,6 +327,39 @@ try:
 finally:
     # Teardown releases the VM and stops billing CUs
     bridge.teardown()
+```
+
+### Distributed Cluster Sharding via Python SDK
+
+To pool multiple Colab accounts and shard a 32B or 70B model across remote GPUs:
+
+```python
+from colab_agent_bridge.cluster import ClusterBridge
+from openai import OpenAI
+
+# Shard across 2 distinct Colab accounts (2x 16GB T4 = 32GB pooled VRAM)
+cluster = ClusterBridge(
+    session_name="cluster-coder32b",
+    profiles=["default", "personal_2"],
+    gpu="T4",
+    local_port=8000,
+)
+
+try:
+    info = cluster.deploy("Qwen/Qwen2.5-Coder-32B-Instruct")
+    print(f"Cluster live at: {info['endpoint_url']}")
+    print(f"Pooled VRAM: {info['total_vram_gb']} GB across {len(info['nodes'])} nodes")
+
+    client = OpenAI(base_url=info['endpoint_url'], api_key="colab")
+    response = client.chat.completions.create(
+        model="Qwen/Qwen2.5-Coder-32B-Instruct",
+        messages=[{"role": "user", "content": "Implement a distributed Raft consensus algorithm in Python."}],
+        temperature=0.2,
+    )
+    print(response.choices[0].message.content)
+finally:
+    # Clean teardown releases all worker VMs across both accounts
+    cluster.teardown()
 ```
 
 ---

@@ -35,6 +35,30 @@ When deploying an LLM, VRAM must accommodate two major components:
 
 ---
 
+## 2.1 Pooled Multi-GPU VRAM Economics & Distributed Weight Sharding
+
+A fundamental bottleneck of Google Colab is the restriction of **1 active GPU per Google account**. A single free NVIDIA T4 provides 16GB VRAM, which comfortably hosts 7B-8B parameter models, but cannot allocate 32B or 70B parameter models without Out-Of-Memory (OOM) errors.
+
+By utilizing `colab-agent-bridge`'s distributed cluster weight sharding (`colab-bridge cluster up`), multiple Google accounts can be combined into a single logical compute pool.
+
+### Multi-Node Pooled VRAM Economics Matrix
+
+| Cluster Shape | Raw VRAM | Usable Pooled VRAM | Supported Large Models | Multi-Account Cost |
+|---|---|---|---|---|
+| **2x NVIDIA T4 (16GB)** | 32 GB | ~29 - 30 GB | **Qwen 2.5 Coder 32B** (Q4_K_M / AWQ), DeepSeek 33B, Command R 35B | 2x Free tier accounts (0 CU) or ~2.0 CU/hr |
+| **3x NVIDIA T4 (16GB)** | 48 GB | ~43 - 45 GB | **Qwen 2.5 Coder 32B** (FP16/BF16 unquantized), Llama 70B (IQ3/Q3_K_M) | 3x Free tier accounts (0 CU) or ~3.0 CU/hr |
+| **4x NVIDIA T4 (16GB)** | 64 GB | ~58 - 60 GB | **Meta Llama 3.3 70B Instruct** (Q4_K_M / AWQ), Qwen 2.5 72B (AWQ) | 4x Free tier accounts (0 CU) or ~4.0 CU/hr |
+| **2x NVIDIA L4 (24GB)** | 48 GB | ~45 GB | **Qwen 2.5 Coder 32B** (FP16 / BF16 unquantized) | 2x Colab Pro accounts (~3.5 CU/hr) |
+| **2x NVIDIA A100 (40GB)** | 80 GB | ~76 GB | **Meta Llama 3.3 70B Instruct** (FP16 unquantized) | 2x Colab Pro+ accounts (~5.0 - 9.0 CU/hr) |
+
+### How Distributed Weight Sharding Works
+1. **Cloud-Native Coordinator Architecture:** Node 1 serves as the distributed coordinator inside Google Cloud, downloading GGUF weights directly from HuggingFace at 200+ MB/s and streaming secondary layer shards to Node 2 via a Cloudflare WebSocket P2P bridge.
+2. **Zero Local Resource Consumption:** 0 GB of local disk space, <30 MB of local RAM, and 0 MB of local internet upload bandwidth.
+3. **Layer Splitting via RPC:** Each remote Google Colab VM runs `llama.cpp`'s `rpc-server` daemon directly interfacing with the remote NVIDIA GPU (`CUDA0: Tesla T4`).
+4. **Balanced Layer Allocation:** Model layers and tensors are split across remote nodes via `--tensor-split 1,1` (or customized ratios), enabling true multi-GPU pipeline parallelism without complex PyTorch cluster setups.
+
+---
+
 ## 3. Recommended Coding Models
 
 The following open-weight coding models have been validated for high performance and tool-calling compatibility:
@@ -64,7 +88,14 @@ High-capacity general reasoning with strong coding instruction adherence.
 - `meta-llama/Llama-3.3-70B-Instruct-AWQ`
   - **Best on:** A100 80GB or H100 80GB
 
-### 4. StarCoder2 (BigCode / Hugging Face)
+### 4. Ornith 1.5 9B (Reasoning & Agent Scaffolding)
+Deep reasoning model fine-tuned for step-by-step thinking (`<think>`) and robust tool calling in autonomous agent loops.
+- `cyankiwi/Ornith-1.5-9B-AWQ-INT4` / `ornith:9b`
+  - **Best on:** T4 (16GB) or L4 (24GB)
+  - **Memory:** ~6.5 GB VRAM in 4-bit AWQ / Ollama Q4_K_M
+  - **Command:** `colab-bridge up ornith:9b --backend ollama --gpu T4`
+
+### 5. StarCoder2 (BigCode / Hugging Face)
 Pre-trained on 600+ programming languages, well suited for specialized languages and completion tasks.
 - `bigcode/starcoder2-7b`
   - **Best on:** T4 or L4
