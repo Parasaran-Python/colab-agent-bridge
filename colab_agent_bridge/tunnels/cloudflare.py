@@ -11,11 +11,13 @@ class CloudflareTunnel(BaseTunnel):
         session_name: str,
         remote_port: int = 8000,
         config: Optional[BridgeConfig] = None,
+        profile: Optional[str] = None,
     ):
         self.session_name = session_name
         self.remote_port = remote_port
         self.config = config or get_config()
-        self.executor = RemoteExecutor(self.config)
+        self.profile = profile
+        self.executor = RemoteExecutor(self.config, profile=self.profile)
         self.tunnel_url: Optional[str] = None
 
     def generate_remote_script(self) -> str:

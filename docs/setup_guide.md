@@ -74,7 +74,76 @@ If you cannot use `gcloud` ADC (e.g. within restricted corporate environments), 
 
 ---
 
-## 4. Colab Pro & Pro+ Compute Unit (CU) Management
+## 4. Multi-Account Profile Management (Bypassing the 1-GPU Limit)
+
+Google Colab restricts free accounts (and certain Pro tiers) to **at most one active GPU runtime per Google account** (`HTTP 412: TooManyAssignmentsError`). Furthermore, the official `google-colab-cli` stores all credentials and session state in a single fixed path (`~/.config/colab-cli/`).
+
+`colab-agent-bridge` solves this with an isolated Multi-Account Profile Subsystem.
+
+### How Profile Isolation Works
+
+1. **Isolated State Directory:**
+   Each profile maintains its own isolated Google OAuth credentials and session catalog under:
+   ```
+   ~/.config/colab-bridge/profiles/<profile_name>/.config/colab-cli/token.json
+   ~/.config/colab-bridge/profiles/<profile_name>/.config/colab-cli/sessions.json
+   ```
+2. **Dynamic Environment Redirection:**
+   When invoking commands targeting a profile, `colab-agent-bridge` intercepts and evaluates `$HOME` dynamically to point to the profile's sandbox. The underlying `google-colab-cli` code runs unmodified while keeping account tokens completely partitioned.
+3. **Automatic SSH Key Symlinking:**
+   The profile manager automatically symlinks `~/.ssh` into the profile sandbox. This allows `colab ssh` to reuse existing host keys without re-prompting for key generation.
+
+### Profile Commands
+
+#### Adding a New Account Profile
+To link a secondary Google account:
+```bash
+colab-bridge profile add personal_2
+```
+This scaffolds the isolated profile directory, symlinks host SSH keys, and launches the interactive Google OAuth2 login flow.
+
+#### Listing Profiles and Active Compute
+To inspect all registered accounts, their authenticated emails, remaining Compute Unit balances, hourly usage rates, and active sessions:
+```bash
+colab-bridge profile list
+```
+Or view the unified dashboard:
+```bash
+colab-bridge status --all
+```
+
+If any compute is actively running on any account, a prominent alert will display:
+```text
+⚠️  Active Compute Alert: Compute is currently active across accounts (1 tracked session(s), burning 1.96 CU/hr).
+```
+
+#### Switching the Default Profile
+To switch which account is used by default:
+```bash
+colab-bridge profile switch personal_2
+```
+
+#### Removing a Profile
+To purge an account profile and its stored credentials:
+```bash
+colab-bridge profile remove personal_2
+```
+
+### Running Sessions on a Specific Profile
+You can target any profile explicitly without switching default:
+```bash
+colab-bridge up Qwen/Qwen2.5-Coder-7B-Instruct --profile personal_2 --port 8002
+```
+
+### Global Nuclear Teardown
+To terminate all sessions and SSH/proxy tunnels across **all** registered accounts in one command:
+```bash
+colab-bridge down --all
+```
+
+---
+
+## 5. Colab Pro & Pro+ Compute Unit (CU) Management
 
 Google Colab allocates GPUs and TPUs based on available Compute Units (CUs). Managing these resources prevents unexpected session termination and quota depletion.
 
@@ -84,6 +153,10 @@ To check your current compute unit balance and burn rate:
 
 ```bash
 colab usage
+```
+Or across all registered accounts:
+```bash
+colab-bridge profile list
 ```
 
 Example output:
@@ -109,21 +182,21 @@ This opens the Colab subscription management page where you can purchase additio
    ```bash
    colab-bridge down -s <session_name>
    ```
+   Or for all accounts:
+   ```bash
+   colab-bridge down --all
+   ```
 2. **Check for Orphaned Sessions:**
    Before starting a new job, check if any old sessions are still running:
    ```bash
-   colab-bridge status
-   ```
-   If orphaned sessions exist:
-   ```bash
-   colab stop -s <orphaned_session_name>
+   colab-bridge status --all
    ```
 3. **Set Realistic Model Timeouts:**
    When running `colab-bridge up`, pass `--timeout 600` (10 minutes) to prevent indefinitely waiting if a model download stalls.
 
 ---
 
-## 5. Configuration Reference
+## 6. Configuration Reference
 
 `colab-agent-bridge` loads settings from environment variables or a `.env` file located in the project root:
 
@@ -137,9 +210,9 @@ This opens the Colab subscription management page where you can purchase additio
 
 ---
 
-## 6. Security & Credential Hygiene
+## 7. Security & Credential Hygiene
 
-- **Session State Files:** Stored under `~/.config/colab-cli/`. These files contain active VM session tokens and are ignored by git.
+- **Session State Files:** Stored under `~/.config/colab-cli/` and `~/.config/colab-bridge/profiles/<profile>/.config/colab-cli/`. These files contain active VM session tokens and are ignored by git.
 - **OAuth Secrets:** `~/.colab-cli-oauth-config.json` should have restricted permissions:
   ```bash
   chmod 600 ~/.colab-cli-oauth-config.json

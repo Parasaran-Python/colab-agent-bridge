@@ -139,3 +139,30 @@ Recommended Backend:  llama_cpp
 Quantization Formats: gguf, q4_k_m
 Advisory:             Running on CPU; model inference will be slow without GPU acceleration.
 ```
+
+---
+
+## 6. Multi-Account Hardware Pooling & Sharding
+
+Because Google Colab limits free accounts to 1 concurrent GPU VM, multi-agent or multi-model coding workflows (e.g., pairing a fast code autocomplete model with an architectural reasoning model) previously required paid tiers or third-party cloud GPUs.
+
+Using `colab-agent-bridge` multi-account profiles, you can pool hardware across separate Google accounts:
+
+| Role | Account / Profile | Hardware Tier | Recommended Model | Port |
+|---|---|---|---|---|
+| **Fast Completion / Infill** | Profile `personal_1` | T4 (16GB) | `Qwen/Qwen2.5-Coder-7B-Instruct-AWQ` | `8000` |
+| **Deep Reasoning & Review** | Profile `personal_2` | T4 or L4 (24GB) | `deepseek-ai/deepseek-coder-6.7b-instruct` | `8002` |
+
+Deploy concurrently:
+```bash
+# Terminal 1: Fast completion engine
+colab-bridge up Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --profile personal_1 --port 8000
+
+# Terminal 2: Deep reasoning engine
+colab-bridge up deepseek-ai/deepseek-coder-6.7b-instruct --profile personal_2 --port 8002
+```
+
+View active compute across accounts at any time:
+```bash
+colab-bridge status --all
+```

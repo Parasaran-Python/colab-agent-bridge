@@ -1,19 +1,44 @@
 import subprocess
 from typing import Optional, List, Dict, Any
 from colab_agent_bridge.config import BridgeConfig, get_config
+from colab_agent_bridge.core.profile import ProfileManager
 
 
 class RemoteExecutor:
-    def __init__(self, config: Optional[BridgeConfig] = None):
+    def __init__(
+        self,
+        config: Optional[BridgeConfig] = None,
+        profile: Optional[str] = None,
+        profile_mgr: Optional[ProfileManager] = None,
+    ):
         self.config = config or get_config()
+        self.profile = profile
+        self.profile_mgr = profile_mgr or ProfileManager()
+
+    def _get_env(self) -> Dict[str, str]:
+        return self.profile_mgr.get_profile_env(self.profile)
+
+    def _get_auth_strategy(self) -> str:
+        target = self.profile if self.profile is not None else self.profile_mgr.get_active_profile()
+        if target and target != "default":
+            return "oauth2"
+        return self.config.auth_strategy
 
     def _build_base_cmd(self) -> List[str]:
-        return [self.config.colab_cli_path, f"--auth={self.config.auth_strategy}"]
+        return [self.config.colab_cli_path, f"--auth={self._get_auth_strategy()}"]
 
     def run_code(self, session_name: str, code: str, timeout: float = 600.0) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["exec", "-s", session_name, "--timeout", str(timeout)]
         try:
-            res = subprocess.run(cmd, input=code, capture_output=True, text=True, check=False, timeout=timeout + 15.0)
+            res = subprocess.run(
+                cmd,
+                env=self._get_env(),
+                input=code,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout + 15.0,
+            )
             return {
                 "success": res.returncode == 0,
                 "stdout": res.stdout.strip(),
@@ -31,7 +56,14 @@ class RemoteExecutor:
     def run_script(self, session_name: str, script_path: str, timeout: float = 600.0) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["exec", "-s", session_name, "-f", script_path, "--timeout", str(timeout)]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout + 15.0)
+            res = subprocess.run(
+                cmd,
+                env=self._get_env(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout + 15.0,
+            )
             return {
                 "success": res.returncode == 0,
                 "stdout": res.stdout.strip(),
@@ -48,7 +80,7 @@ class RemoteExecutor:
 
     def install_packages(self, session_name: str, packages: List[str]) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["install", "-s", session_name] + packages
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, env=self._get_env(), capture_output=True, text=True, check=False)
         return {
             "success": res.returncode == 0,
             "stdout": res.stdout.strip(),

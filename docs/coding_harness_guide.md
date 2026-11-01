@@ -268,3 +268,32 @@ Or directly via curl:
 ```bash
 curl -i http://localhost:8000/v1/models
 ```
+
+---
+
+## 8. Multi-Model Harness Routing across Accounts
+
+When leveraging multi-account GPU pooling, you can route different coding tools to distinct models running simultaneously on separate Google Colab accounts:
+
+```bash
+# 1. Start primary coding model on Profile 1 (port 8000)
+colab-bridge up Qwen/Qwen2.5-Coder-7B-Instruct --profile personal_1 --port 8000
+
+# 2. Start deep reasoning model on Profile 2 (port 8002)
+colab-bridge up deepseek-ai/deepseek-coder-6.7b-instruct --profile personal_2 --port 8002
+```
+
+Configure your environment to route tools:
+```bash
+# Point Aider to the 7B fast coder
+export OPENAI_BASE_URL="http://localhost:8000/v1"
+aider
+
+# In Continue / OpenCode, set base URL to port 8002 for architectural reviews
+"baseURL": "http://localhost:8002/v1"
+```
+
+Terminate all multi-account sessions when done:
+```bash
+colab-bridge down --all
+```

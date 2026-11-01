@@ -26,7 +26,9 @@ Environment configuration is read from `.env` in the repository root or system e
 
 ---
 
-## 2. Cardinal Rule: Compute Unit Safety
+## 2. Cardinal Rules
+
+### Rule 2.1: Compute Unit Safety (Mandatory Teardown)
 
 > [!CAUTION]
 > **COMPUTE UNIT PRESERVATION RULE**
@@ -36,7 +38,22 @@ Environment configuration is read from `.env` in the repository root or system e
 > ```bash
 > /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down -s <session_name>
 > ```
+> Or when managing multi-account / cluster sessions, perform a global teardown:
+> ```bash
+> /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down --all
+> ```
 > In Python code, ALWAYS wrap bridge operations in a `try...finally` block that invokes `bridge.teardown()`.
+
+### Rule 2.2: Mandatory Documentation Synchronization
+
+> [!IMPORTANT]
+> **DOCUMENTATION SYNCHRONIZATION REQUIREMENT**
+> Whenever any code, feature, CLI command, parameter/flag, configuration setting, SDK method, or architectural behavior is added, modified, or removed, you MUST update all corresponding documentation files in the same changeset before claiming completion:
+> - `README.md`: Features, Quickstart, CLI Reference, Python SDK examples.
+> - `AGENTS.md`: Autonomous agent playbook, SOPs, commands, diagnostics, recovery table.
+> - `docs/`: `setup_guide.md`, `hardware_and_models.md`, `coding_harness_guide.md`.
+>
+> **Never consider any feature, fix, refactor, or PR complete until documentation is 100% synchronized and verified.**
 
 ---
 
@@ -50,13 +67,18 @@ Run:
 ```bash
 /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge status
 ```
+Or view all configured account profiles, balances, and active VMs:
+```bash
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge status --all
+/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge profile list
+```
 
 - **Exit code `0` (Success):** CLI reports `Google Colab CLI authenticated.` Proceed to Step 4.
 - **Exit code `1` (Failure):** Application Default Credentials (ADC) are missing or lack the required OAuth scopes.
 
 ### Step 3.2: Remediate Missing ADC Scopes
 
-If authentication fails, the exact Google Cloud ADC command required is:
+If authentication fails on the default account, the exact Google Cloud ADC command required is:
 ```bash
 gcloud auth application-default login \
   --scopes=openid,https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/colaboratory
@@ -64,6 +86,13 @@ gcloud auth application-default login \
 
 > [!IMPORTANT]
 > The 4 scopes above (`openid`, `cloud-platform`, `userinfo.email`, `colaboratory`) are strictly mandatory. Missing `https://www.googleapis.com/auth/colaboratory` will cause authorization rejections when initiating VM sessions.
+
+### Step 3.3: Managing Multi-Account Profiles
+
+When running concurrent GPU sessions across distinct Google accounts:
+- Add a profile: `/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge profile add <profile_name>`
+- Switch active profile: `/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge profile switch <profile_name>`
+- Remove a profile: `/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge profile remove <profile_name>`
 
 ---
 
@@ -164,13 +193,14 @@ import sys
 from openai import OpenAI
 from colab_agent_bridge.client.bridge import ColabBridge
 
-# 1. Initialize the bridge configuration
+# 1. Initialize the bridge configuration (optionally target a secondary profile)
 bridge = ColabBridge(
     session_name="agent-worker-01",
     gpu="T4",
     backend="vllm",
     tunnel_type="ssh",
     local_port=8000,
+    profile=None,  # Or set to specific account e.g. "personal_2"
 )
 
 model_identifier = "Qwen/Qwen2.5-Coder-7B-Instruct"
@@ -240,7 +270,9 @@ print(data["choices"][0]["message"]["content"])
 | Issue Encountered | Root Cause | Agent Action / Remediation |
 |---|---|---|
 | `DefaultCredentialsError: Your default credentials were not found.` | ADC missing or expired. | Run `gcloud auth application-default login --scopes=...` with the 4 scopes listed in Section 3.2. |
+| `HTTP 412: TooManyAssignmentsError` | Free tier limit of 1 active GPU reached on current account. | Target a secondary account profile: `/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge up <model> --profile <profile_name>`. Or switch active profile: `colab-bridge profile switch <profile_name>`. |
 | `Colab VM allocation failed: GPU quota exceeded` | The selected GPU tier is unavailable or out of compute units. | Fallback to a lower GPU (e.g. from `A100` to `L4` or `T4`), or specify standard CPU with `--high-mem`. |
+| `⚠️ Active Compute Alert: Compute is currently active` | Untracked remote VM or idle session burning compute units. | Run `/run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down --all` to execute a global nuclear cleanup across all accounts. |
 | `Health check timed out.` | Backend took longer than 600s to download weights, or crashed due to CUDA OOM. | Check Colab VM logs: run `/run/media/parasaran/Dev/SDK/python/install/bin/colab exec -s <session> -- "cat /content/vllm_server.log"`. Use quantized model (AWQ) or `backend="llama_cpp"`. |
 | `Connection refused: localhost:8000` | SSH tunnel dropped or failed to bind. | Rerun `colab-bridge status -s <session>`. If VM is up, re-establish tunnel or switch to `--tunnel cloudflare`. |
 | `Kernel disconnected / timeout` | Colab idle timeout triggered after prolonged inactivity. | `ColabBridge` runs an automatic keepalive thread every 180s. Ensure `keepalive_ping` is not blocked. |
