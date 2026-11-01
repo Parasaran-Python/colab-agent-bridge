@@ -26,7 +26,9 @@ Environment configuration is read from `.env` in the repository root or system e
 
 ---
 
-## 2. Cardinal Rule: Compute Unit Safety
+## 2. Cardinal Rules
+
+### Rule 2.1: Compute Unit Safety (Mandatory Teardown)
 
 > [!CAUTION]
 > **COMPUTE UNIT PRESERVATION RULE**
@@ -41,6 +43,17 @@ Environment configuration is read from `.env` in the repository root or system e
 > /run/media/parasaran/Dev/SDK/python/install/bin/colab-bridge down --all
 > ```
 > In Python code, ALWAYS wrap bridge operations in a `try...finally` block that invokes `bridge.teardown()`.
+
+### Rule 2.2: Mandatory Documentation Synchronization
+
+> [!IMPORTANT]
+> **DOCUMENTATION SYNCHRONIZATION REQUIREMENT**
+> Whenever any code, feature, CLI command, parameter/flag, configuration setting, SDK method, or architectural behavior is added, modified, or removed, you MUST update all corresponding documentation files in the same changeset before claiming completion:
+> - `README.md`: Features, Quickstart, CLI Reference, Python SDK examples.
+> - `AGENTS.md`: Autonomous agent playbook, SOPs, commands, diagnostics, recovery table.
+> - `docs/`: `setup_guide.md`, `hardware_and_models.md`, `coding_harness_guide.md`.
+>
+> **Never consider any feature, fix, refactor, or PR complete until documentation is 100% synchronized and verified.**
 
 ---
 

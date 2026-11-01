@@ -309,12 +309,15 @@ finally:
    - The CLI strictly verifies the four ADC scopes (`openid`, `cloud-platform`, `userinfo.email`, `colaboratory`) before issuing VM requests.
 3. **Safe Subprocess Calls:**
    - All external commands use explicit argument lists without unescaped shell string interpolation.
+4. **Mandatory Documentation Synchronization:**
+   - Any addition, modification, or deprecation of CLI commands, flags, SDK options, configuration settings, or runtime behaviors must be accompanied by synchronous documentation updates across `README.md`, `AGENTS.md`, and relevant files in `docs/` in the same pull request. Documentation must never lag behind code changes.
 
 ---
 
 ## 📚 Documentation Index
 
 - [Autonomous Agent Operating Playbook (`AGENTS.md`)](AGENTS.md)
+- [Contributing Guidelines (`CONTRIBUTING.md`)](CONTRIBUTING.md)
 - [Authentication & Setup Guide (`docs/setup_guide.md`)](docs/setup_guide.md)
 - [Hardware & Model Guide (`docs/hardware_and_models.md`)](docs/hardware_and_models.md)
 - [Coding Harness Guide (`docs/coding_harness_guide.md`)](docs/coding_harness_guide.md)
