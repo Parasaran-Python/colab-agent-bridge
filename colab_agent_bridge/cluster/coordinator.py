@@ -34,11 +34,21 @@ class ClusterCoordinator:
     def build_command(self) -> List[str]:
         rpc_arg = ",".join([f"localhost:{node.local_rpc_port}" for node in self.nodes])
         split_arg = self.tensor_split if self.tensor_split else ",".join(["1"] * len(self.nodes))
+        
+        is_file = os.path.exists(self.model_name) or self.model_name.endswith(".gguf")
+        if is_file:
+            model_args = ["-m", self.model_name]
+        else:
+            repo = self.model_name
+            if "gguf" not in repo.lower():
+                repo = f"{repo}-GGUF"
+            quant = ":Q4_K_M" if ":" not in repo else ""
+            model_args = ["--hf-repo", f"{repo}{quant}"]
+
         cmd = [
             self.coordinator_bin,
-            "--hf-model-repo",
-            self.model_name,
-            "--model-alias",
+            *model_args,
+            "--alias",
             "default",
             "--host",
             "127.0.0.1",

@@ -10,13 +10,65 @@ from colab_agent_bridge.cluster.models import ClusterNode
 
 def generate_worker_install_script() -> str:
     return """
-import subprocess, sys
-print("[cluster-worker] Installing llama-cpp-python[server] and RPC components...")
-cmd = [
-    sys.executable, "-m", "pip", "install", "-q",
-    "llama-cpp-python[server]", "huggingface_hub"
-]
-subprocess.run(cmd, check=True)
+import subprocess, sys, os, urllib.request, tarfile
+
+print("[cluster-worker] Installing RPC worker components...")
+dest_dir = "/content/llama-bin"
+os.makedirs(dest_dir, exist_ok=True)
+
+# Download pre-built CUDA binary release for maximum performance
+cuda_tar = "https://github.com/ggerganov/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-cuda-12.8-x64.tar.gz"
+cpu_tar = "https://github.com/ggerganov/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz"
+tar_path = "/tmp/llama-bin.tar.gz"
+
+downloaded = False
+for url in [cuda_tar, cpu_tar]:
+    try:
+        print(f"[cluster-worker] Downloading release from {url}...")
+        urllib.request.urlretrieve(url, tar_path)
+        downloaded = True
+        break
+    except Exception as e:
+        print(f"[cluster-worker] Download error ({e}), trying fallback...")
+
+if downloaded:
+    try:
+        with tarfile.open(tar_path, "r:gz") as tar:
+            tar.extractall("/content")
+        for item in os.listdir("/content"):
+            if item.startswith("llama-b"):
+                src = os.path.join("/content", item)
+                for f in os.listdir(src):
+                    s = os.path.join(src, f)
+                    d = os.path.join(dest_dir, f)
+                    if not os.path.exists(d):
+                        try:
+                            os.symlink(s, d) if os.path.isfile(s) else None
+                        except Exception:
+                            pass
+                break
+        with open("/etc/ld.so.conf.d/llama.conf", "w") as f:
+            f.write(f"{dest_dir}\\n")
+        subprocess.run(["ldconfig"], check=False)
+        for b in ["ggml-rpc-server", "rpc-server"]:
+            b_path = os.path.join(dest_dir, b)
+            if os.path.exists(b_path):
+                target = f"/usr/local/bin/{b}"
+                if not os.path.exists(target):
+                    try:
+                        os.symlink(b_path, target)
+                    except Exception:
+                        pass
+        print("[cluster-worker] Pre-built binary package ready.")
+    except Exception as e:
+        print(f"[cluster-worker] Extraction fallback: {e}")
+
+# Also ensure python package as fallback
+try:
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "llama-cpp-python[server]"], check=False)
+except Exception:
+    pass
+
 print("[cluster-worker] Worker dependencies installed successfully.")
 """
 
@@ -26,18 +78,21 @@ def generate_worker_start_script(port: int = 50052) -> str:
 import os, sys, time, shutil
 
 log_file = "/content/cluster_rpc_server.log"
+ld_path = "/content/llama-bin"
 
-# Locate rpc-server binary or launch via llama-cpp-python server
-rpc_bin = shutil.which("rpc-server") or shutil.which("llama-rpc-server")
-if not rpc_bin:
-    py_bin = os.path.join(os.path.dirname(sys.executable), "rpc-server")
-    if os.path.exists(py_bin):
-        rpc_bin = py_bin
-    else:
-        # Fallback python RPC daemon wrapper
-        rpc_bin = f"{{sys.executable}} -m llama_cpp.server.rpc"
+# Locate rpc-server binary
+rpc_bin = (
+    shutil.which("ggml-rpc-server")
+    or shutil.which("rpc-server")
+    or shutil.which("llama-rpc-server")
+    or "/content/llama-bin/ggml-rpc-server"
+    or "/content/llama-bin/rpc-server"
+    or "/usr/local/bin/ggml-rpc-server"
+    or f"{{sys.executable}} -m llama_cpp.server.rpc"
+)
 
 cmd = (
+    f"export LD_LIBRARY_PATH={{ld_path}}:$LD_LIBRARY_PATH && "
     f"nohup {{rpc_bin}} "
     f"-p {port} "
     f"-H 0.0.0.0 "
