@@ -239,7 +239,7 @@ time.sleep(1)
 # Connect to worker's Cloudflare tunnel endpoint and expose local port 50052
 if os.path.exists(websocat_bin):
     print("[cluster-coordinator] Establishing P2P WebSocket bridge to worker...")
-    os.system("nohup /content/websocat -b -E tcp-l:127.0.0.1:50052 {wss_url} > /content/websocat_client.log 2>&1 &")
+    os.system(f"nohup /content/websocat -b tcp-l:127.0.0.1:50052 {wss_url} > /content/websocat_client.log 2>&1 &")
     time.sleep(2)
 """
         rpc_arg = "--rpc 127.0.0.1:50052"
