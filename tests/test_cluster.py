@@ -206,7 +206,8 @@ def test_recommend_cluster_strategy_insufficient():
 
 def test_worker_scripts():
     install_script = generate_worker_install_script()
-    assert "llama-cpp-python[server]" in install_script
+    assert "Installing RPC worker components" in install_script
+    assert "llama-bin" in install_script
 
     start_script = generate_worker_start_script(port=50052, enable_tunnel=True)
     assert "port 50052" in start_script

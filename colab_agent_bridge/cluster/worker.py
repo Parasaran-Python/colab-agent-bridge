@@ -117,12 +117,6 @@ if not os.path.exists(cloudflared_bin):
     except Exception:
         pass
 
-# Also ensure python package as fallback
-try:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "llama-cpp-python[server]"], check=False)
-except Exception:
-    pass
-
 print("[cluster-worker] Worker dependencies installed successfully.")
 """
 
