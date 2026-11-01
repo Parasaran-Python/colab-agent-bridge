@@ -297,3 +297,62 @@ Terminate all multi-account sessions when done:
 ```bash
 colab-bridge down --all
 ```
+
+---
+
+## 9. Connecting to Distributed Sharded Clusters (Qwen 32B & Llama 70B)
+
+When running frontier-scale coding models like **Qwen 2.5 Coder 32B** or **Meta Llama 3.3 70B**, `colab-agent-bridge` pools VRAM across 2–4 Google accounts and exposes a single unified endpoint on `http://localhost:8000/v1`.
+
+### 1. Launching the Distributed Cluster
+```bash
+# Pool 2x T4 GPUs (32GB VRAM) across 'default' and 'personal_2' accounts
+colab-bridge cluster up Qwen/Qwen2.5-Coder-32B-Instruct --profiles default,personal_2 --gpu T4
+```
+
+### 2. Connecting Aider to the 32B Sharded Cluster
+Launch Aider pointing to the unified cluster endpoint:
+```bash
+aider \
+  --openai-api-base http://localhost:8000/v1 \
+  --openai-api-key colab \
+  --model openai/Qwen/Qwen2.5-Coder-32B-Instruct
+```
+Or via environment variables:
+```bash
+export OPENAI_BASE_URL="http://localhost:8000/v1"
+export OPENAI_API_KEY="colab"
+export AIDER_MODEL="openai/Qwen/Qwen2.5-Coder-32B-Instruct"
+aider
+```
+
+### 3. Connecting OpenCode (`opencode.json`)
+Configure the `colab` provider in `~/.config/opencode/opencode.json`:
+```json
+{
+  "provider": {
+    "colab": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:8000/v1",
+        "apiKey": "colab",
+        "timeout": 600000
+      },
+      "models": {
+        "qwen2.5-coder-32b": {
+          "name": "Qwen 2.5 Coder 32B (Distributed Cluster)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 32768, "output": 8192 }
+        }
+      }
+    }
+  }
+}
+```
+OpenCode will route tool execution and autonomous agent steps through `colab_agent_bridge.adapter`, which normalizes tool calls and coordinates layer offloading across the remote Colab GPUs.
+
+### 4. Cluster Teardown
+```bash
+colab-bridge cluster down --session cluster-bridge
+```

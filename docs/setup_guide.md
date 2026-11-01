@@ -135,6 +135,54 @@ You can target any profile explicitly without switching default:
 colab-bridge up Qwen/Qwen2.5-Coder-7B-Instruct --profile personal_2 --port 8002
 ```
 
+### Multi-Account Distributed Cluster Weight Sharding
+
+To bypass single-GPU VRAM limits and run massive open-weight models (e.g. 32B or 70B parameters) across multiple Google Colab accounts:
+
+#### 1. Configure and Authenticate Accounts
+Ensure at least two Google accounts are registered:
+```bash
+# Add a second account profile
+colab-bridge profile add personal_2
+
+# Verify all profiles are authenticated and show positive CU balances
+colab-bridge profile list
+```
+
+#### 2. Spin Up Distributed Sharded Cluster
+Launch remote `llama.cpp` RPC workers on each account VM, establish multi-node SSH tunnels, and boot the local coordinator:
+```bash
+colab-bridge cluster up \
+  Qwen/Qwen2.5-Coder-32B-Instruct \
+  --profiles default,personal_2 \
+  --gpu T4 \
+  --port 8000 \
+  --timeout 600
+```
+*Behind the scenes:*
+- Node 1 (`cluster-bridge-default`) binds remote RPC daemon to port 50052, forwarded to `localhost:50051`.
+- Node 2 (`cluster-bridge-personal_2`) binds remote RPC daemon to port 50052, forwarded to `localhost:50052`.
+- Local coordinator boots with `--rpc localhost:50051,localhost:50052 --tensor-split 1,1` on port 9000.
+- Smart Adapter starts on `localhost:8000`, routing OpenAI API requests to port 9000.
+
+#### 3. Monitor Active Clusters
+```bash
+# Check status of cluster nodes, local RPC ports, and VRAM pooling
+colab-bridge cluster status
+
+# List all active clusters
+colab-bridge cluster list
+```
+
+#### 4. Clean Teardown
+```bash
+# Terminate the cluster and release remote Colab VMs on both accounts
+colab-bridge cluster down --session cluster-bridge
+
+# Or global nuclear cleanup across all accounts
+colab-bridge down --all
+```
+
 ### Global Nuclear Teardown
 To terminate all sessions and SSH/proxy tunnels across **all** registered accounts in one command:
 ```bash
