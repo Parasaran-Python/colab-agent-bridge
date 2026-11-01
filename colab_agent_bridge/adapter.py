@@ -419,6 +419,7 @@ def normalize_chat_completion_stream_chunk(chunk_dict: Dict[str, Any]) -> Dict[s
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+    allow_reuse_address = True
 
 
 def start_adapter_server(listen_port: int, target_port: int) -> ThreadedHTTPServer:
