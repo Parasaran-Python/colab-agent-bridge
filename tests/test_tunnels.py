@@ -1,9 +1,10 @@
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from colab_agent_bridge.config import BridgeConfig
-from colab_agent_bridge.tunnels import BaseTunnel, SSHTunnel, CloudflareTunnel
+from colab_agent_bridge.tunnels import BaseTunnel, CloudflareTunnel, SSHTunnel
 
 
 def test_base_tunnel_abstract():

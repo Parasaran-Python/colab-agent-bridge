@@ -1,12 +1,16 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from colab_agent_bridge.client.bridge import ColabBridge
+
 from colab_agent_bridge.client import (
     ColabBridge as ExportedBridge,
-    generate_agent_config,
+)
+from colab_agent_bridge.client import (
     check_health,
+    generate_agent_config,
     keepalive_ping,
 )
+from colab_agent_bridge.client.bridge import ColabBridge
 
 
 def test_colab_bridge_init():
@@ -81,9 +85,7 @@ def test_colab_bridge_deploy_cloudflare_no_wait(mock_cf_cls):
     mock_tunnel.start.return_value = "https://agent-cf.trycloudflare.com/v1"
     mock_cf_cls.return_value = mock_tunnel
 
-    bridge = ColabBridge(
-        session_name="test-cf", gpu="A100", backend="vllm", tunnel_type="cloudflare"
-    )
+    bridge = ColabBridge(session_name="test-cf", gpu="A100", backend="vllm", tunnel_type="cloudflare")
 
     bridge.session_mgr.new_session = MagicMock(return_value={"success": True, "stdout": "started"})
     bridge.executor.run_code = MagicMock(return_value={"success": True, "stdout": "ok"})
@@ -109,9 +111,7 @@ def test_colab_bridge_deploy_session_failure():
 
 def test_colab_bridge_deploy_install_failure():
     bridge = ColabBridge(session_name="fail-install-bridge", gpu="T4")
-    bridge.session_mgr.new_session = MagicMock(
-        return_value={"success": True, "stdout": "VM ready"}
-    )
+    bridge.session_mgr.new_session = MagicMock(return_value={"success": True, "stdout": "VM ready"})
     bridge.executor.run_code = MagicMock(
         return_value={"success": False, "stderr": "pip install failed: out of disk space", "stdout": ""}
     )

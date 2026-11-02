@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def generate_agent_config(endpoint_url: str, model_name: str) -> Dict[str, Any]:

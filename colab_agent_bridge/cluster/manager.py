@@ -1,23 +1,21 @@
 import os
-import time
-import threading
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, List, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
-from colab_agent_bridge.config import BridgeConfig, get_config
-from colab_agent_bridge.core.profile import ProfileManager, ProfileInfo
-from colab_agent_bridge.core.session import SessionManager
-from colab_agent_bridge.core.hardware import validate_accelerator, SUPPORTED_GPUS
-from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
 from colab_agent_bridge.adapter import start_adapter_server
-from colab_agent_bridge.client.health import check_health, keepalive_ping
 from colab_agent_bridge.client.harness import generate_agent_config
-
-from colab_agent_bridge.cluster.models import ClusterNode, ClusterInfo
+from colab_agent_bridge.client.health import check_health, keepalive_ping
+from colab_agent_bridge.cluster.coordinator import ClusterCoordinator
+from colab_agent_bridge.cluster.models import ClusterInfo, ClusterNode
 from colab_agent_bridge.cluster.state import ClusterStateStore
 from colab_agent_bridge.cluster.worker import provision_cluster_worker, stop_cluster_worker
-from colab_agent_bridge.cluster.coordinator import ClusterCoordinator
+from colab_agent_bridge.config import BridgeConfig, get_config
+from colab_agent_bridge.core.hardware import validate_accelerator
+from colab_agent_bridge.core.profile import ProfileInfo, ProfileManager
+from colab_agent_bridge.core.session import SessionManager
 
 
 def validate_cluster_profiles(
@@ -158,7 +156,7 @@ class ClusterBridge:
 
         self.nodes: List[ClusterNode] = []
         self.coordinator: Optional[ClusterCoordinator] = None
-        self.adapter_server = None
+        self.adapter_server: Optional[Any] = None
         self.endpoint_url: Optional[str] = None
         self._keepalive_active = False
         self._keepalive_thread: Optional[threading.Thread] = None
@@ -231,7 +229,8 @@ class ClusterBridge:
                         timeout=timeout,
                         high_mem=self.high_mem,
                         profile_mgr=self.profile_mgr,
-                    ): n for n in worker_nodes
+                    ): n
+                    for n in worker_nodes
                 }
                 coord_fut.result()
                 for fut in as_completed(worker_futures):
@@ -241,9 +240,7 @@ class ClusterBridge:
                         if isinstance(res, dict) and res.get("public_tunnel_url"):
                             node.public_tunnel_url = res["public_tunnel_url"]
                     except Exception as exc:
-                        raise RuntimeError(
-                            f"Worker provisioning failed for node '{node.session_name}': {exc}"
-                        ) from exc
+                        raise RuntimeError(f"Worker provisioning failed for node '{node.session_name}': {exc}") from exc
 
             worker_tunnel_url = worker_nodes[0].public_tunnel_url if worker_nodes else None
             if worker_nodes and not worker_tunnel_url:
@@ -292,6 +289,7 @@ class ClusterBridge:
                     _provision(node)
 
             import socket
+
             for node in self.nodes:
                 ready = False
                 start_t = time.time()
@@ -411,10 +409,7 @@ class ClusterBridge:
         node_results: Dict[str, Any] = {}
         if self.nodes:
             with ThreadPoolExecutor(max_workers=max(1, len(self.nodes))) as executor:
-                futures = {
-                    executor.submit(stop_cluster_worker, node, config=self.config): node
-                    for node in self.nodes
-                }
+                futures = {executor.submit(stop_cluster_worker, node, config=self.config): node for node in self.nodes}
                 for fut in as_completed(futures):
                     node = futures[fut]
                     try:

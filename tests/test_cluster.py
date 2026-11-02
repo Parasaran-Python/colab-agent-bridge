@@ -1,24 +1,25 @@
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from colab_agent_bridge.cli import app
-from colab_agent_bridge.cluster.models import ClusterNode, ClusterInfo
-from colab_agent_bridge.cluster.state import ClusterStateStore
-from colab_agent_bridge.cluster.worker import (
-    generate_worker_install_script,
-    generate_worker_start_script,
-    generate_coordinator_start_script,
-    provision_cluster_worker,
-    stop_cluster_worker,
-)
 from colab_agent_bridge.cluster.coordinator import ClusterCoordinator
 from colab_agent_bridge.cluster.manager import (
     ClusterBridge,
     ClusterManager,
-    validate_cluster_profiles,
     recommend_cluster_strategy,
+    validate_cluster_profiles,
+)
+from colab_agent_bridge.cluster.models import ClusterInfo, ClusterNode
+from colab_agent_bridge.cluster.state import ClusterStateStore
+from colab_agent_bridge.cluster.worker import (
+    generate_coordinator_start_script,
+    generate_worker_install_script,
+    generate_worker_start_script,
+    provision_cluster_worker,
+    stop_cluster_worker,
 )
 from colab_agent_bridge.core.profile import ProfileInfo
 
@@ -26,6 +27,7 @@ runner = CliRunner()
 
 
 # --- Models & State Tests ---
+
 
 def test_cluster_models():
     node = ClusterNode(
@@ -126,6 +128,7 @@ def test_cluster_state_store_corrupted(tmp_path):
 
 # --- Profile Validation Tests ---
 
+
 def test_validate_cluster_profiles_success():
     mock_pm = MagicMock()
     mock_pm.list_profiles.return_value = [
@@ -175,6 +178,7 @@ def test_validate_cluster_profiles_unauthenticated():
 
 # --- Strategy Recommendation Tests ---
 
+
 def test_recommend_cluster_strategy_2x_t4():
     rec = recommend_cluster_strategy("Qwen/Qwen2.5-Coder-32B-Instruct", gpu="T4", num_nodes=2)
     assert rec["num_nodes"] == 2
@@ -203,6 +207,7 @@ def test_recommend_cluster_strategy_insufficient():
 
 
 # --- Worker Scripts & Lifecycle Tests ---
+
 
 def test_worker_scripts():
     install_script = generate_worker_install_script()
@@ -293,6 +298,7 @@ def test_stop_cluster_worker(mock_sm_cls, mock_ssh_cls):
 
 
 # --- Cluster Coordinator Tests ---
+
 
 def test_coordinator_command_generation():
     nodes = [
@@ -390,6 +396,7 @@ def test_coordinator_missing_binary():
 
 
 # --- ClusterBridge Tests ---
+
 
 @patch("colab_agent_bridge.cluster.manager.SessionManager")
 @patch("colab_agent_bridge.cluster.manager.check_health")
@@ -502,6 +509,7 @@ def test_cluster_bridge_deploy_health_failure(
 
 # --- ClusterManager Methods Tests ---
 
+
 def test_cluster_manager_methods(tmp_path):
     state_file = tmp_path / "clusters.json"
     store = ClusterStateStore(state_file=state_file)
@@ -545,6 +553,7 @@ def test_cluster_manager_methods(tmp_path):
 
 
 # --- CLI Cluster Subcommands Tests ---
+
 
 def test_cli_cluster_help():
     res = runner.invoke(app, ["cluster", "--help"])

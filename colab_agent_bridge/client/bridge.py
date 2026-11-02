@@ -1,15 +1,16 @@
 import threading
 import time
-from typing import Optional, Dict, Any
-from colab_agent_bridge.config import BridgeConfig, get_config
-from colab_agent_bridge.core.session import SessionManager
-from colab_agent_bridge.core.executor import RemoteExecutor
-from colab_agent_bridge.backends import get_backend
-from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
-from colab_agent_bridge.tunnels.cloudflare import CloudflareTunnel
-from colab_agent_bridge.client.health import check_health, keepalive_ping
-from colab_agent_bridge.client.harness import generate_agent_config
+from typing import Any, Dict, Optional
+
 from colab_agent_bridge.adapter import start_adapter_server
+from colab_agent_bridge.backends import get_backend
+from colab_agent_bridge.client.harness import generate_agent_config
+from colab_agent_bridge.client.health import check_health, keepalive_ping
+from colab_agent_bridge.config import BridgeConfig, get_config
+from colab_agent_bridge.core.executor import RemoteExecutor
+from colab_agent_bridge.core.session import SessionManager
+from colab_agent_bridge.tunnels.cloudflare import CloudflareTunnel
+from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
 
 
 class ColabBridge:
@@ -37,8 +38,8 @@ class ColabBridge:
 
         self.session_mgr = SessionManager(self.config, profile=self.profile)
         self.executor = RemoteExecutor(self.config, profile=self.profile)
-        self.tunnel = None
-        self.adapter_server = None
+        self.tunnel: Optional[Any] = None
+        self.adapter_server: Optional[Any] = None
         self.endpoint_url: Optional[str] = None
         self._keepalive_active = False
         self._keepalive_thread: Optional[threading.Thread] = None
@@ -100,9 +101,7 @@ class ColabBridge:
                 profile=self.profile,
             )
             self.tunnel.start()
-            self.adapter_server = start_adapter_server(
-                listen_port=self.local_port, target_port=tunnel_port
-            )
+            self.adapter_server = start_adapter_server(listen_port=self.local_port, target_port=tunnel_port)
             self.endpoint_url = f"http://localhost:{self.local_port}/v1"
 
         # 5. Wait for readiness

@@ -1,4 +1,5 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from colab_agent_bridge.config import BridgeConfig
 from colab_agent_bridge.core.executor import RemoteExecutor
 

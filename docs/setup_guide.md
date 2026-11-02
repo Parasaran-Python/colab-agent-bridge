@@ -266,3 +266,31 @@ This opens the Colab subscription management page where you can purchase additio
   chmod 600 ~/.colab-cli-oauth-config.json
   ```
 - **Local Logs:** Temporary logs (`/content/vllm_server.log`, `/content/cloudflared.log`) remain isolated on the ephemeral Colab VM.
+
+---
+
+## 8. Developer Setup & CI Quality Gates
+
+To contribute to `colab-agent-bridge` or run the test suite locally:
+
+1. **Install with Dev Dependencies:**
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+2. **Run Continuous Integration Quality Suite:**
+   ```bash
+   # Run unit tests with coverage
+   pytest tests -v --cov=colab_agent_bridge
+
+   # Run Ruff linter and formatting checks
+   ruff check .
+   ruff format --check colab_agent_bridge tests
+
+   # Run Mypy static type checker
+   mypy colab_agent_bridge
+
+   # Validate package build and twine metadata
+   python -m build --sdist --wheel
+   twine check --strict dist/*
+   ```

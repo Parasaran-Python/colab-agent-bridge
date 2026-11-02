@@ -1,11 +1,11 @@
-import subprocess
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+from colab_agent_bridge.cluster.models import ClusterNode
 from colab_agent_bridge.config import BridgeConfig, get_config
-from colab_agent_bridge.core.session import SessionManager
 from colab_agent_bridge.core.executor import RemoteExecutor
 from colab_agent_bridge.core.profile import ProfileManager
+from colab_agent_bridge.core.session import SessionManager
 from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
-from colab_agent_bridge.cluster.models import ClusterNode
 
 
 def generate_worker_install_script() -> str:
@@ -377,6 +377,7 @@ def provision_cluster_worker(
 
     # Check for Cloudflare tunnel URL in stdout
     import re
+
     stdout_text = start_res.get("stdout") or ""
     m = re.search(r"TUNNEL_URL:\s*(https://[a-zA-Z0-9-]+\.trycloudflare\.com)", stdout_text)
     if m:

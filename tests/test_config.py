@@ -1,5 +1,7 @@
 import os
-from colab_agent_bridge.config import get_config, BridgeConfig, resolve_colab_binary
+
+from colab_agent_bridge.config import BridgeConfig, get_config, resolve_colab_binary
+
 
 def test_default_config(monkeypatch):
     for key in list(os.environ.keys()):
@@ -14,6 +16,7 @@ def test_default_config(monkeypatch):
     assert config.default_gpu == "T4"
     assert config.auth_strategy == "adc"
 
+
 def test_default_config_oauth2_detected(monkeypatch):
     for key in list(os.environ.keys()):
         if key.startswith("COLAB_"):
@@ -23,6 +26,7 @@ def test_default_config_oauth2_detected(monkeypatch):
     config = get_config()
     assert config.auth_strategy == "oauth2"
 
+
 def test_env_override_config(monkeypatch):
     monkeypatch.setenv("COLAB_CLI_PATH", "/custom/bin/colab")
     monkeypatch.setenv("COLAB_BRIDGE_PORT", "9000")
@@ -31,6 +35,7 @@ def test_env_override_config(monkeypatch):
     assert config.colab_cli_path == "/custom/bin/colab"
     assert config.default_port == 9000
     assert config.default_backend == "ollama"
+
 
 def test_env_override_all_fields(monkeypatch):
     monkeypatch.setenv("COLAB_CLI_PATH", "/bin/colab-custom")
@@ -45,9 +50,10 @@ def test_env_override_all_fields(monkeypatch):
     assert config.default_gpu == "A100"
     assert config.auth_strategy == "oauth2"
 
+
 def test_resolve_colab_binary_fallbacks(monkeypatch):
     monkeypatch.delenv("COLAB_CLI_PATH", raising=False)
-    
+
     # Case 1: DEFAULT_SDK_COLAB does not exist, which returns a path
     monkeypatch.setattr("os.path.exists", lambda path: False)
     monkeypatch.setattr("shutil.which", lambda cmd: "/usr/local/bin/colab" if cmd == "colab" else None)

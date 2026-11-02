@@ -7,12 +7,57 @@ name = "colab-agent-bridge"
 version = "0.1.0"
 description = "Bridge Google Colab GPU/TPU model serving to local coding agent harnesses via OpenAI-compatible endpoints."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "requests>=2.28.0",
-    "pydantic>=2.0.0"
+    "pydantic>=2.0.0",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/Parasaran-Python/colab-agent-bridge"
+Repository = "https://github.com/Parasaran-Python/colab-agent-bridge"
+Issues = "https://github.com/Parasaran-Python/colab-agent-bridge/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+lint = [
+    "ruff>=0.1.0",
+]
+typecheck = [
+    "mypy>=1.0.0",
+    "types-requests>=2.28.0",
+]
+build = [
+    "build>=1.0.0",
+    "twine>=4.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "types-requests>=2.28.0",
+    "build>=1.0.0",
+    "twine>=4.0.0",
+    "pre-commit>=3.0.0",
 ]
 
 [project.scripts]
@@ -21,3 +66,35 @@ colab-bridge = "colab_agent_bridge.cli:app"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["colab_agent_bridge"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["colab_agent_bridge"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "def __repr__",
+]

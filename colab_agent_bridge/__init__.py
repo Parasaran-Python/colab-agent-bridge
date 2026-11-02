@@ -4,4 +4,4 @@ from colab_agent_bridge.client.bridge import ColabBridge
 from colab_agent_bridge.cluster.manager import ClusterBridge, ClusterManager
 
 __version__ = "0.1.0"
-__all__ = ["ColabBridge", "ClusterBridge", "ClusterManager", "__version__"]
+__all__ = ["ClusterBridge", "ClusterManager", "ColabBridge", "__version__"]

@@ -1,14 +1,15 @@
 import os
-import time
 import shutil
 import subprocess
-from typing import Optional, List, Dict, Any
-from colab_agent_bridge.config import resolve_llama_server_binary, BridgeConfig, get_config
+import time
+from typing import Any, Dict, List, Optional
+
+from colab_agent_bridge.cluster.models import ClusterNode
+from colab_agent_bridge.cluster.worker import generate_coordinator_start_script, generate_worker_install_script
+from colab_agent_bridge.config import BridgeConfig, get_config, resolve_llama_server_binary
 from colab_agent_bridge.core.executor import RemoteExecutor
 from colab_agent_bridge.core.profile import ProfileManager
 from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
-from colab_agent_bridge.cluster.models import ClusterNode
-from colab_agent_bridge.cluster.worker import generate_coordinator_start_script, generate_worker_install_script
 
 
 class ClusterCoordinator:
@@ -30,7 +31,7 @@ class ClusterCoordinator:
         self.process: Optional[subprocess.Popen] = None
         self.tunnel: Optional[SSHTunnel] = None
         self.is_remote: bool = False
-        self._log_file = None
+        self._log_file: Optional[Any] = None
 
     @property
     def pid(self) -> Optional[int]:
@@ -41,7 +42,7 @@ class ClusterCoordinator:
     def build_command(self) -> List[str]:
         rpc_arg = ",".join([f"127.0.0.1:{node.local_rpc_port}" for node in self.nodes])
         split_arg = self.tensor_split if self.tensor_split else ",".join(["1"] * len(self.nodes))
-        
+
         is_file = os.path.exists(self.model_name) or self.model_name.endswith(".gguf")
         if is_file:
             model_args = ["-m", self.model_name]
@@ -84,7 +85,7 @@ class ClusterCoordinator:
         """Start llama-server directly on the remote Colab coordinator node."""
         cfg = config or get_config()
         executor = RemoteExecutor(cfg, profile=coordinator_node.profile)
-        
+
         # 1. Install dependencies on coordinator if needed
         executor.run_code(
             coordinator_node.session_name,
@@ -154,7 +155,8 @@ class ClusterCoordinator:
         )
         time.sleep(2)
         if self.process.poll() is not None:
-            self._log_file.flush()
+            if self._log_file:
+                self._log_file.flush()
             err_output = ""
             try:
                 with open("/tmp/cluster_coordinator.log", "r") as f:

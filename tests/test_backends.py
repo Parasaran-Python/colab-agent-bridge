@@ -1,9 +1,10 @@
 import pytest
+
 from colab_agent_bridge.backends import (
-    get_backend,
-    VLLMBackend,
-    OllamaBackend,
     LlamaCppBackend,
+    OllamaBackend,
+    VLLMBackend,
+    get_backend,
 )
 
 

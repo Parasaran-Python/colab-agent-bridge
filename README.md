@@ -2,7 +2,7 @@
 
 > Bridge Google Colab GPU/TPU model serving directly to local coding agent harnesses (Aider, Cline, Continue, Cursor) via OpenAI-compatible endpoints.
 
-[![CI](https://github.com/parasaran/colab-agent-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/parasaran/colab-agent-bridge)
+[![CI](https://github.com/Parasaran-Python/colab-agent-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Parasaran-Python/colab-agent-bridge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
@@ -361,6 +361,49 @@ finally:
     # Clean teardown releases all worker VMs across both accounts
     cluster.teardown()
 ```
+
+---
+
+## 🛠️ Development & Continuous Integration
+
+### Local Development Setup
+
+Clone the repository and install with development dependencies:
+
+```bash
+git clone https://github.com/Parasaran-Python/colab-agent-bridge.git
+cd colab-agent-bridge
+pip install -e ".[dev]"
+```
+
+### Running Quality Checks & Tests
+
+Run all unit tests, linters, static type checks, and package builds:
+
+```bash
+# 1. Run full test suite with coverage
+pytest tests -v --cov=colab_agent_bridge
+
+# 2. Linting and formatting checks
+ruff check .
+ruff format --check .
+
+# 3. Static type analysis
+mypy colab_agent_bridge
+
+# 4. Packaging and distribution check
+python -m build --sdist --wheel
+twine check --strict dist/*
+```
+
+### Automated CI Pipeline
+
+Every pull request and commit to `main` executes the automated GitHub Actions CI workflow:
+- **Lint & Formatting (`ruff`):** Fast PEP 8 and import order compliance.
+- **Static Typing (`mypy`):** Strict type safety across all bridge components.
+- **Multi-Version Test Matrix:** Hermetic unit test validation across **Python 3.10, 3.11, 3.12, and 3.13**.
+- **Distribution Verification:** Hermetic build validation, wheel integrity checks (`twine`), and isolated CLI smoke tests.
+- **Security & Secret Audit:** Automated scans preventing accidental credential, token, or private key leaks.
 
 ---
 
