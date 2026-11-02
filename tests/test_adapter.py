@@ -1,9 +1,8 @@
 import json
-import pytest
+
 from colab_agent_bridge.adapter import (
-    try_extract_tool_calls,
     normalize_chat_completion_response,
-    normalize_chat_completion_stream_chunk,
+    try_extract_tool_calls,
 )
 
 
@@ -106,10 +105,10 @@ def test_normalize_chat_completion_response_normal_chat():
 
 
 def test_adapter_server_proxy_e2e():
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    from socketserver import ThreadingMixIn
     import threading
     import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
     from colab_agent_bridge.adapter import start_adapter_server
 
     class MockUpstreamHandler(BaseHTTPRequestHandler):
@@ -209,7 +208,6 @@ def test_tool_aliases_native_tool_calls():
     assert json.loads(tc["function"]["arguments"]) == {"path": "test.py", "content": "1"}
 
 
-
 def test_extract_multiple_markdown_code_blocks():
     content = """```json
 {
@@ -286,11 +284,11 @@ def test_extract_json_with_unescaped_inner_quotes():
     assert tool_calls[0]["function"]["name"] in ("shell", "bash")
 
 
-
 def test_proxy_strips_disallowed_tools():
-    from http.server import HTTPServer, BaseHTTPRequestHandler
     import threading
     import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
     from colab_agent_bridge.adapter import start_adapter_server
 
     captured_request = {}
@@ -345,51 +343,6 @@ def test_proxy_strips_disallowed_tools():
         upstream_server.server_close()
 
 
-def test_tool_aliases_create_to_write():
-    content = """```json
-{"name": "create", "arguments": {"filepath": "calculator.py", "text": "def add(a, b): return a + b"}}
-```"""
-    tool_calls = try_extract_tool_calls(content)
-    assert tool_calls is not None
-    assert len(tool_calls) == 1
-    assert tool_calls[0]["function"]["name"] == "write"
-    parsed_args = json.loads(tool_calls[0]["function"]["arguments"])
-    assert parsed_args["path"] == "calculator.py"
-    assert parsed_args["content"] == "def add(a, b): return a + b"
-
-
-def test_tool_aliases_native_tool_calls():
-    raw_response = {
-        "id": "chatcmpl-test",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "tool_calls": [
-                        {
-                            "id": "call_1",
-                            "type": "function",
-                            "function": {
-                                "name": "create",
-                                "arguments": '{"path": "test.py", "content": "1"}',
-                            },
-                        }
-                    ],
-                },
-                "finish_reason": "tool_calls",
-            }
-        ],
-    }
-    normalized = normalize_chat_completion_response(raw_response)
-    tc = normalized["choices"][0]["message"]["tool_calls"][0]
-    assert tc["function"]["name"] == "write"
-    assert json.loads(tc["function"]["arguments"]) == {"path": "test.py", "content": "1"}
-
-
-
-
-
 def test_extract_tool_call_function_as_string():
     content = '```json\n{\n  "function": "shell",\n  "arguments": {\n    "command": "ls -la"\n  }\n}\n```'
     tool_calls = try_extract_tool_calls(content)
@@ -442,7 +395,7 @@ def test_normalize_chat_completion_preserves_thinking():
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "<think>\nThinking step by step...\n</think>\n```json\n{\"name\": \"write\", \"arguments\": {\"path\": \"test.py\", \"content\": \"1\"}}\n```",
+                    "content": '<think>\nThinking step by step...\n</think>\n```json\n{"name": "write", "arguments": {"path": "test.py", "content": "1"}}\n```',
                 },
                 "finish_reason": "stop",
             }

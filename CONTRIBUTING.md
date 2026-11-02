@@ -38,16 +38,33 @@ Thank you for contributing to `colab-agent-bridge`! Whether you are a human deve
 ## 2. Development & Testing Workflow
 
 1. **Environment Setup:**
-   Run tests using the project's Python test runner:
+   Install the package with all development and test dependencies:
    ```bash
-   pytest tests -v
+   pip install -e ".[dev]"
    ```
-   Ensure all tests pass 100% before committing.
 
-2. **Isolated Test State:**
+2. **Automated Quality Checks:**
+   Run the full test suite, linter, type checker, and packaging validator:
+   ```bash
+   # Run tests with coverage
+   pytest tests -v --cov=colab_agent_bridge
+
+   # Run Ruff linter and formatter check
+   ruff check .
+   ruff format --check colab_agent_bridge tests
+
+   # Run Mypy static type checker
+   mypy colab_agent_bridge
+
+   # Build distribution and check packaging metadata
+   python -m build --sdist --wheel
+   twine check --strict dist/*
+   ```
+
+3. **Isolated Test State:**
    Never write to or mutate the developer's real `~/.config/colab-bridge/` or `~/.config/colab-cli/` during unit tests. Always use temporary directories (`tmp_path`) and pass isolated configurations.
 
-3. **Subprocess Safety:**
+4. **Subprocess Safety:**
    Avoid raw string shell commands with unescaped interpolation. Pass explicit argument lists to `subprocess.run` or `subprocess.Popen`.
 
 ---
@@ -55,8 +72,10 @@ Thank you for contributing to `colab-agent-bridge`! Whether you are a human deve
 ## 3. Pull Request Checklist
 
 Before submitting a PR, verify:
-- [ ] Code changes adhere to project style and conventions.
+- [ ] Code changes adhere to project style and conventions (`ruff check .`, `ruff format`).
 - [ ] All unit tests pass: `pytest tests -v`.
+- [ ] Static type checking passes: `mypy colab_agent_bridge`.
+- [ ] Package build passes: `python -m build && twine check --strict dist/*`.
 - [ ] New tests are added covering the new functionality or bugfix.
 - [ ] **All documentation is updated** (`README.md`, `AGENTS.md`, `docs/*`).
-- [ ] No secrets, tokens, or personal identifiers are committed.
+- [ ] No secrets, tokens, credentials, or personal identifiers are committed.

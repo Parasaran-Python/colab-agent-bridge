@@ -1,15 +1,14 @@
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import requests
+
 from colab_agent_bridge.client.harness import generate_agent_config
 from colab_agent_bridge.client.health import check_health, keepalive_ping
 
 
 def test_generate_agent_config():
-    conf = generate_agent_config(
-        endpoint_url="http://localhost:8000/v1",
-        model_name="Qwen/Qwen2.5-Coder-7B-Instruct"
-    )
+    conf = generate_agent_config(endpoint_url="http://localhost:8000/v1", model_name="Qwen/Qwen2.5-Coder-7B-Instruct")
     assert 'OPENAI_BASE_URL="http://localhost:8000/v1"' in conf["env_snippet"]
     assert 'OPENAI_API_KEY="colab"' in conf["env_snippet"]
     assert conf["openai_client_kwargs"]["base_url"] == "http://localhost:8000/v1"

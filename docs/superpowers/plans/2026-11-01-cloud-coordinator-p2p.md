@@ -4,7 +4,7 @@
 
 **Goal:** Shift the distributed cluster coordinator (`llama-server`) from the local user machine to Colab Node 1, connecting to Colab Node 2 via a high-speed Cloudflare WebSocket P2P bridge, eliminating all local disk, RAM, and upload bottlenecks so 32B models deploy in ~3 minutes.
 
-**Architecture:** 
+**Architecture:**
 - Node 1 (Coordinator on primary profile, e.g. `default`) runs `llama-server` with CUDA support on Colab, downloading weights directly from HuggingFace at 200+ MB/s.
 - Node 2 (Worker on secondary profile, e.g. `sitonam`) runs `ggml-rpc-server` + `websocat` + `cloudflared` to expose a high-speed Cloudflare tunnel endpoint.
 - Node 1 runs a `websocat` client bridging `127.0.0.1:50052` to Node 2's Cloudflare tunnel endpoint.
@@ -33,7 +33,7 @@
 
 **Interfaces:**
 - Consumes: `ClusterNode` from `colab_agent_bridge/cluster/models.py`
-- Produces: 
+- Produces:
   - `generate_worker_start_script(port, enable_tunnel=True)`
   - `generate_coordinator_start_script(model_name, rpc_endpoints, port=8000, tensor_split="1,1", ngl=999)`
 

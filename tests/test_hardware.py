@@ -1,12 +1,10 @@
 import pytest
+
 from colab_agent_bridge.core.hardware import (
-    SUPPORTED_GPUS,
-    SUPPORTED_TPUS,
     CPU_SPEC,
     AcceleratorTier,
-    HardwareSpec,
-    validate_accelerator,
     recommend_model_strategy,
+    validate_accelerator,
 )
 
 

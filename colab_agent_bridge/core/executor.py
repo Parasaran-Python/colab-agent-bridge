@@ -1,5 +1,6 @@
 import subprocess
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from colab_agent_bridge.config import BridgeConfig, get_config
 from colab_agent_bridge.core.profile import ProfileManager
 

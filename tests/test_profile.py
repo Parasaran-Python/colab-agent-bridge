@@ -1,14 +1,12 @@
-import json
 import os
-import shutil
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from typer.testing import CliRunner
+from unittest.mock import MagicMock, patch
+
 import pytest
+from typer.testing import CliRunner
 
 from colab_agent_bridge.cli import app
-from colab_agent_bridge.core.profile import ProfileManager, ProfileInfo
+from colab_agent_bridge.core.profile import ProfileInfo, ProfileManager
 from colab_agent_bridge.core.session import SessionManager
 
 runner = CliRunner()
@@ -88,11 +86,7 @@ def test_profile_query_usage_parsing(temp_profile_mgr):
     mgr = temp_profile_mgr
     mgr.create_profile("account_b")
 
-    mock_stdout = (
-        "Current balance: 24.50 compute units\n"
-        "Usage rate: 1.96/hr\n"
-        "Active assignments: 2\n"
-    )
+    mock_stdout = "Current balance: 24.50 compute units\nUsage rate: 1.96/hr\nActive assignments: 2\n"
 
     with patch("subprocess.run") as mock_sub:
         mock_sub.return_value = MagicMock(returncode=0, stdout=mock_stdout)
@@ -192,11 +186,12 @@ def test_cli_status_all():
 
 
 def test_cli_down_all():
-    with patch("colab_agent_bridge.cli.ProfileManager") as mock_pm_cls, \
-         patch("colab_agent_bridge.cli.SessionManager") as mock_sm_cls, \
-         patch("colab_agent_bridge.cli.ClusterManager.teardown_all") as mock_cm_teardown, \
-         patch("colab_agent_bridge.tunnels.ssh_tunnel.SSHTunnel.cleanup_session_tunnels") as mock_cleanup:
-        
+    with (
+        patch("colab_agent_bridge.cli.ProfileManager") as mock_pm_cls,
+        patch("colab_agent_bridge.cli.SessionManager") as mock_sm_cls,
+        patch("colab_agent_bridge.cli.ClusterManager.teardown_all"),
+        patch("colab_agent_bridge.tunnels.ssh_tunnel.SSHTunnel.cleanup_session_tunnels") as mock_cleanup,
+    ):
         mock_pm = MagicMock()
         mock_pm.list_profiles.return_value = [
             ProfileInfo(

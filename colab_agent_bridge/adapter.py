@@ -1,12 +1,11 @@
 import json
 import re
-import uuid
-import select
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
-import urllib.request
 import urllib.error
-from typing import Optional, List, Dict, Any, Union
+import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+from typing import Any, Dict, List, Optional
 
 try:
     import json_repair
@@ -163,7 +162,8 @@ def _extract_from_dict(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         fn = item["function"]
         name = fn.get("name")
         args = fn.get("arguments", fn.get("parameters", {}))
-        return _make_tool_call(name, args)
+        if name and isinstance(name, str):
+            return _make_tool_call(name, args)
     return None
 
 
@@ -185,6 +185,7 @@ def try_extract_tool_calls(content: str) -> Optional[List[Dict[str, Any]]]:
         cleaned = cleaned.split("</think>")[-1].strip()
 
     calls: List[Dict[str, Any]] = []
+    c: Optional[Dict[str, Any]] = None
 
     # Strategy 1: Check for XML <tool_call> tags
     xml_matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", cleaned, re.DOTALL)
@@ -353,7 +354,11 @@ def normalize_chat_completion_response(response: Dict[str, Any]) -> Dict[str, An
                             old_str = parsed_args.get("oldString")
                             if old_str is None:
                                 old_str = parsed_args.get("old_string")
-                            new_str = parsed_args.get("newString") or parsed_args.get("new_string") or parsed_args.get("content")
+                            new_str = (
+                                parsed_args.get("newString")
+                                or parsed_args.get("new_string")
+                                or parsed_args.get("content")
+                            )
                             if (old_str == "" or old_str is None) and new_str:
                                 norm = "write"
                                 parsed_args["content"] = new_str
@@ -442,6 +447,7 @@ _upstream_model_cache: Dict[str, Any] = {"model": None, "timestamp": 0.0}
 
 def _get_upstream_model(target_port: int) -> Optional[str]:
     import time
+
     now = time.time()
     if _upstream_model_cache["model"] and (now - _upstream_model_cache["timestamp"] < 30):
         return _upstream_model_cache["model"]
@@ -539,11 +545,7 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                 content_type = resp_headers.get("Content-Type", "")
 
                 # Normalize chat completions
-                if (
-                    "application/json" in content_type
-                    and "/chat/completions" in self.path
-                    and method == "POST"
-                ):
+                if "application/json" in content_type and "/chat/completions" in self.path and method == "POST":
                     raw_body = resp.read()
                     try:
                         data = json.loads(raw_body.decode("utf-8"))
@@ -586,15 +588,17 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
                             for idx, tc in enumerate(tool_calls):
                                 args = tc["function"]["arguments"]
                                 arg_str = args if isinstance(args, str) else json.dumps(args)
-                                delta_tc.append({
-                                    "index": idx,
-                                    "id": tc.get("id", f"call_{uuid.uuid4().hex[:8]}"),
-                                    "type": "function",
-                                    "function": {
-                                        "name": tc["function"]["name"],
-                                        "arguments": arg_str,
-                                    },
-                                })
+                                delta_tc.append(
+                                    {
+                                        "index": idx,
+                                        "id": tc.get("id", f"call_{uuid.uuid4().hex[:8]}"),
+                                        "type": "function",
+                                        "function": {
+                                            "name": tc["function"]["name"],
+                                            "arguments": arg_str,
+                                        },
+                                    }
+                                )
                             c2 = {
                                 "id": msg_id,
                                 "object": "chat.completion.chunk",
@@ -669,7 +673,11 @@ class SmartAdapterHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    import sys, time, threading, urllib.request
+    import sys
+    import threading
+    import time
+    import urllib.request
+
     l_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     t_port = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
     print(f"[SmartAdapter] Starting proxy on 127.0.0.1:{l_port} -> 127.0.0.1:{t_port}...")
@@ -693,4 +701,3 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         srv.shutdown()
         srv.server_close()
-

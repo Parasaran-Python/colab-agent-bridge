@@ -1,9 +1,10 @@
 import subprocess
 import time
-from typing import Optional, List
+from typing import List, Optional
+
 from colab_agent_bridge.config import BridgeConfig, get_config
-from colab_agent_bridge.tunnels.base import BaseTunnel
 from colab_agent_bridge.core.profile import ProfileManager
+from colab_agent_bridge.tunnels.base import BaseTunnel
 
 
 class SSHTunnel(BaseTunnel):
@@ -71,7 +72,7 @@ class SSHTunnel(BaseTunnel):
         time.sleep(2)
         if self.process.poll() is not None:
             stderr = ""
-            if getattr(self.process, "stderr", None) and hasattr(self.process.stderr, "read"):
+            if self.process.stderr is not None and hasattr(self.process.stderr, "read"):
                 try:
                     err = self.process.stderr.read()
                     stderr = err.decode("utf-8", errors="replace") if isinstance(err, bytes) else str(err)
@@ -103,6 +104,7 @@ class SSHTunnel(BaseTunnel):
         """Find and terminate any local SSH or ProxyCommand tunnel processes associated with the session."""
         import os
         import signal
+
         try:
             res = subprocess.run(
                 ["pgrep", "-f", "--", f"-s {session_name}"],

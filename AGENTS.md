@@ -61,6 +61,17 @@ Environment configuration is read from `.env` in the repository root or system e
 >
 > **Never consider any feature, fix, refactor, or PR complete until documentation is 100% synchronized and verified.**
 
+### Rule 2.3: Mandatory CI & Quality Validation
+
+> [!IMPORTANT]
+> **PRE-FLIGHT CODE QUALITY & CI VERIFICATION REQUIREMENT**
+> Autonomous agents must verify all quality gates prior to opening or updating pull requests:
+> 1. Unit Tests: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests -v` (100% passing).
+> 2. Linting & Formatting: `ruff check .` and `ruff format --check colab_agent_bridge tests`.
+> 3. Static Type Analysis: `mypy colab_agent_bridge`.
+> 4. Distribution Validation: `python -m build --sdist --wheel && twine check --strict dist/*`.
+> 5. Secret Hygiene: Verify no `.token.json`, `token.json`, `credentials/`, `*.pem`, or `*.key` files are tracked in git.
+
 ---
 
 ## 3. Pre-Flight Authentication Checks

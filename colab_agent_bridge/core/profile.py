@@ -1,11 +1,11 @@
-import os
 import json
+import os
 import shutil
-import urllib.request
 import subprocess
-from pathlib import Path
+import urllib.request
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from colab_agent_bridge.config import resolve_colab_binary
 
@@ -74,6 +74,7 @@ class ProfileManager:
         if name == "default":
             raise ValueError("Profile name 'default' is reserved for the system default account.")
         import re
+
         if not re.match(r"^[a-zA-Z0-9_-]+$", name):
             raise ValueError(
                 f"Profile name '{name}' is invalid. Use alphanumeric characters, dashes, and underscores only."
@@ -140,7 +141,7 @@ class ProfileManager:
 
     def get_profile_info(self, name: str) -> ProfileInfo:
         active_name = self.get_active_profile()
-        is_active = (name == active_name)
+        is_active = name == active_name
 
         if name == "default":
             token_file = Path.home() / ".config" / "colab-cli" / "token.json"

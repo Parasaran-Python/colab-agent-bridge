@@ -1,22 +1,21 @@
-import os
 from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
-from colab_agent_bridge.config import get_config
-from colab_agent_bridge.core.session import SessionManager
-from colab_agent_bridge.core.hardware import recommend_model_strategy
-from colab_agent_bridge.core.profile import ProfileManager
 from colab_agent_bridge.client.bridge import ColabBridge
 from colab_agent_bridge.client.harness import generate_agent_config
 from colab_agent_bridge.client.health import check_health
 from colab_agent_bridge.cluster import (
     ClusterBridge,
     ClusterManager,
-    recommend_cluster_strategy,
 )
+from colab_agent_bridge.config import get_config
+from colab_agent_bridge.core.hardware import recommend_model_strategy
+from colab_agent_bridge.core.profile import ProfileManager
+from colab_agent_bridge.core.session import SessionManager
 
 app = typer.Typer(
     name="colab-bridge",
@@ -36,7 +35,30 @@ app.add_typer(cluster_app, name="cluster")
 console = Console()
 
 
+def version_callback(value: bool) -> None:
+    if value:
+        from colab_agent_bridge import __version__
+
+        console.print(f"colab-bridge v{__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Show version and exit.",
+        callback=version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    pass
+
+
 # --- Profile Subcommands ---
+
 
 @profile_app.command("list")
 def profile_list():
@@ -108,6 +130,7 @@ def profile_add(
         console.print(f"[green]✔ Profile directory initialized:[/green] {p_path}")
         console.print("[cyan]Launching Google authentication flow...[/cyan]")
         import subprocess
+
         env = mgr.get_profile_env(name)
         res = subprocess.run(
             [mgr.colab_cli_path, "--auth=oauth2", "usage"],
@@ -156,10 +179,13 @@ def profile_remove(
 
 # --- Cluster Subcommands ---
 
+
 @cluster_app.command("up")
 def cluster_up(
     model: str = typer.Argument(..., help="Model identifier (e.g. Qwen/Qwen2.5-Coder-32B-Instruct)"),
-    profiles: str = typer.Option(..., "-P", "--profiles", help="Comma-separated Colab profiles to pool (e.g. default,personal_2)"),
+    profiles: str = typer.Option(
+        ..., "-P", "--profiles", help="Comma-separated Colab profiles to pool (e.g. default,personal_2)"
+    ),
     session: str = typer.Option("cluster-bridge", "-s", "--session", help="Cluster session name prefix"),
     gpu: str = typer.Option("T4", "-g", "--gpu", help="GPU accelerator tier per node (T4, L4, A100, H100)"),
     port: int = typer.Option(8000, "-p", "--port", help="Local port for unified OpenAI endpoint"),
@@ -168,7 +194,11 @@ def cluster_up(
     tensor_split: Optional[str] = typer.Option(None, "--tensor-split", help="Custom layer split ratio (e.g. 1,1)"),
     high_mem: bool = typer.Option(False, "--high-mem", help="Request high-RAM shape for VMs"),
     coordinator_bin: Optional[str] = typer.Option(None, "--coordinator-bin", help="Custom path to llama-server binary"),
-    remote_coordinator: bool = typer.Option(True, "--remote-coordinator/--local-coordinator", help="Run coordinator on Colab Node 1 (zero local disk/RAM) or locally"),
+    remote_coordinator: bool = typer.Option(
+        True,
+        "--remote-coordinator/--local-coordinator",
+        help="Run coordinator on Colab Node 1 (zero local disk/RAM) or locally",
+    ),
 ):
     """Deploy distributed cluster weight sharding across multiple Google Colab profiles."""
     console.print(
@@ -187,15 +217,17 @@ def cluster_up(
     )
     try:
         res = bridge.deploy(model_name=model, wait_for_ready=True, timeout=timeout)
-        if getattr(bridge, "adapter_server", None):
+        adapter_srv = getattr(bridge, "adapter_server", None)
+        if adapter_srv is not None:
             try:
-                bridge.adapter_server.shutdown()
-                bridge.adapter_server.server_close()
+                adapter_srv.shutdown()
+                adapter_srv.server_close()
             except Exception:
                 pass
         coordinator_port = port + 1000
         import subprocess
         import sys
+
         subprocess.Popen(
             [sys.executable, "-m", "colab_agent_bridge.adapter", str(port), str(coordinator_port)],
             stdout=subprocess.DEVNULL,
@@ -204,7 +236,10 @@ def cluster_up(
         )
 
         nodes_summary = "\n".join(
-            [f"  - Node {n['session_name']} (Profile: {n['profile']}) -> localhost:{n['local_rpc_port']}" for n in res["nodes"]]
+            [
+                f"  - Node {n['session_name']} (Profile: {n['profile']}) -> localhost:{n['local_rpc_port']}"
+                for n in res["nodes"]
+            ]
         )
 
         console.print(
@@ -234,12 +269,18 @@ def cluster_up(
 @cluster_app.command("down")
 def cluster_down(
     session: str = typer.Option("cluster-bridge", "-s", "--session", help="Cluster session name prefix to terminate"),
-    profiles: Optional[str] = typer.Option(None, "-P", "--profiles", help="Optional comma-separated profiles to release"),
-    all_clusters: bool = typer.Option(False, "-a", "--all", help="Terminate all clusters and workers across all accounts"),
+    profiles: Optional[str] = typer.Option(
+        None, "-P", "--profiles", help="Optional comma-separated profiles to release"
+    ),
+    all_clusters: bool = typer.Option(
+        False, "-a", "--all", help="Terminate all clusters and workers across all accounts"
+    ),
 ):
     """Tear down distributed cluster sessions, coordinator, tunnels, and workers."""
     if all_clusters:
-        console.print("[bold yellow]Scanning and terminating all distributed clusters across all accounts...[/bold yellow]")
+        console.print(
+            "[bold yellow]Scanning and terminating all distributed clusters across all accounts...[/bold yellow]"
+        )
         res = ClusterManager.teardown_all()
         console.print(
             f"[bold green]✔ Terminated {res['clusters_terminated']} cluster(s) ({len(res['nodes_released'])} nodes) across all accounts. Compute preserved.[/bold green]"
@@ -335,6 +376,7 @@ def cluster_status(
 
 # --- Core Commands ---
 
+
 @app.command()
 def status(
     session_name: Optional[str] = typer.Option(None, "-s", "--session", help="Session name to inspect"),
@@ -427,14 +469,16 @@ def up(
     try:
         res = bridge.deploy(model_name=model, wait_for_ready=True, timeout=timeout)
         if bridge.tunnel_type == "ssh":
-            if getattr(bridge, "adapter_server", None):
+            adapter_srv = getattr(bridge, "adapter_server", None)
+            if adapter_srv is not None:
                 try:
-                    bridge.adapter_server.shutdown()
-                    bridge.adapter_server.server_close()
+                    adapter_srv.shutdown()
+                    adapter_srv.server_close()
                 except Exception:
                     pass
             import subprocess
             import sys
+
             subprocess.Popen(
                 [sys.executable, "-m", "colab_agent_bridge.adapter", str(port), str(port + 1000)],
                 stdout=subprocess.DEVNULL,
@@ -469,8 +513,9 @@ def down(
     profile: Optional[str] = typer.Option(None, "-p", "--profile", help="Account profile to target"),
 ):
     """Terminate tunnels and release Colab VM compute resources (supports --all)."""
-    from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
     import subprocess
+
+    from colab_agent_bridge.tunnels.ssh_tunnel import SSHTunnel
 
     if all_sessions:
         console.print("[bold yellow]Scanning and terminating all sessions across all accounts...[/bold yellow]")
@@ -499,7 +544,9 @@ def down(
         # Terminate any tracked distributed clusters as well
         ClusterManager.teardown_all()
 
-        console.print(f"[bold green]✔ Terminated {total_killed} session(s) across all accounts. Compute preserved.[/bold green]")
+        console.print(
+            f"[bold green]✔ Terminated {total_killed} session(s) across all accounts. Compute preserved.[/bold green]"
+        )
         return
 
     config = get_config()
@@ -541,9 +588,7 @@ def test_endpoint(
     console.print(f"[bold cyan]Testing endpoint {endpoint}...[/bold cyan]")
     res = check_health(endpoint, timeout_seconds=timeout)
     if res.get("ready"):
-        console.print(
-            f"[bold green]✔ Endpoint is healthy and responsive (elapsed: {res.get('elapsed')}s)[/bold green]"
-        )
+        console.print(f"[bold green]✔ Endpoint is healthy and responsive (elapsed: {res.get('elapsed')}s)[/bold green]")
     else:
         console.print(f"[bold red]✖ Health check failed:[/bold red] {res.get('error', 'Timed out')}")
         raise typer.Exit(code=1)

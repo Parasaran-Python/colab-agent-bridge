@@ -1,5 +1,7 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from typer.testing import CliRunner
+
 from colab_agent_bridge.cli import app
 
 runner = CliRunner()
@@ -14,6 +16,16 @@ def test_cli_help():
     assert "recommend" in result.stdout
     assert "harness" in result.stdout
     assert "test" in result.stdout
+
+
+def test_cli_version():
+    res_long = runner.invoke(app, ["--version"])
+    assert res_long.exit_code == 0
+    assert "colab-bridge v" in res_long.stdout
+
+    res_short = runner.invoke(app, ["-v"])
+    assert res_short.exit_code == 0
+    assert "colab-bridge v" in res_short.stdout
 
 
 def test_cli_recommend():
@@ -95,7 +107,9 @@ def test_cli_down_failure():
 
 
 def test_cli_harness():
-    result = runner.invoke(app, ["harness", "--endpoint", "http://localhost:8000/v1", "--model", "Qwen/Qwen2.5-Coder-7B-Instruct"])
+    result = runner.invoke(
+        app, ["harness", "--endpoint", "http://localhost:8000/v1", "--model", "Qwen/Qwen2.5-Coder-7B-Instruct"]
+    )
     assert result.exit_code == 0
     assert "OPENAI_BASE_URL" in result.stdout
     assert "aider" in result.stdout

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 DEFAULT_SDK_COLAB = "/run/media/parasaran/Dev/SDK/python/install/bin/colab"
 DEFAULT_SDK_LLAMA_SERVER = "/run/media/parasaran/Dev/SDK/python/install/bin/llama-server"
 
+
 @dataclass
 class BridgeConfig:
     colab_cli_path: str
@@ -12,6 +13,7 @@ class BridgeConfig:
     default_backend: str = "vllm"
     default_gpu: str = "T4"
     auth_strategy: str = "adc"
+
 
 def resolve_colab_binary() -> str:
     env_path = os.getenv("COLAB_CLI_PATH")
@@ -24,6 +26,7 @@ def resolve_colab_binary() -> str:
         return which_path
     return "colab"
 
+
 def resolve_llama_server_binary() -> str:
     env_path = os.getenv("LLAMA_SERVER_PATH")
     if env_path:
@@ -35,6 +38,7 @@ def resolve_llama_server_binary() -> str:
         return which_path
     return "llama-server"
 
+
 def resolve_auth_strategy() -> str:
     env_strat = os.getenv("COLAB_AUTH_STRATEGY")
     if env_strat:
@@ -44,11 +48,12 @@ def resolve_auth_strategy() -> str:
         return "oauth2"
     return "adc"
 
+
 def get_config() -> BridgeConfig:
     return BridgeConfig(
         colab_cli_path=resolve_colab_binary(),
         default_port=int(os.getenv("COLAB_BRIDGE_PORT", "8000")),
         default_backend=os.getenv("COLAB_DEFAULT_BACKEND", "vllm"),
         default_gpu=os.getenv("COLAB_DEFAULT_GPU", "T4"),
-        auth_strategy=resolve_auth_strategy()
+        auth_strategy=resolve_auth_strategy(),
     )

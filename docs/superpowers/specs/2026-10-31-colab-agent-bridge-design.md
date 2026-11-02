@@ -1,7 +1,7 @@
 # Design Document: Colab Agent Bridge (`colab-agent-bridge`)
 
-**Date:** 2026-10-31  
-**Status:** Approved  
+**Date:** 2026-10-31
+**Status:** Approved
 **Project Path:** `/run/media/parasaran/Dev/linux_dev/git/colab-agent-bridge`
 
 ---

@@ -60,7 +60,7 @@ def test_env_override_config(monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_config.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_config.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge')
 
 - [ ] **Step 3: Implement minimal code for config and scaffolding**
@@ -156,7 +156,7 @@ def get_config() -> BridgeConfig:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_config.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_config.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -221,7 +221,7 @@ def test_recommend_model_strategy_a100():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_hardware.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_hardware.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.core.hardware')
 
 - [ ] **Step 3: Implement minimal code for hardware matrix**
@@ -275,7 +275,7 @@ def validate_accelerator(accel: Optional[str]) -> HardwareSpec:
 def recommend_model_strategy(model_name: str, accel: Optional[str]) -> dict:
     spec = validate_accelerator(accel)
     name_lower = model_name.lower()
-    
+
     # Heuristic parameter detection from model name
     param_size = 7
     if "70b" in name_lower or "72b" in name_lower:
@@ -291,7 +291,7 @@ def recommend_model_strategy(model_name: str, accel: Optional[str]) -> dict:
 
     # FP16 requires roughly 2GB VRAM per billion params + 2-4GB KV cache overhead
     fp16_vram_needed = param_size * 2 + 4
-    
+
     if spec.vram_gb == 0:  # CPU
         return {
             "needs_quantization": True,
@@ -299,7 +299,7 @@ def recommend_model_strategy(model_name: str, accel: Optional[str]) -> dict:
             "recommended_quantization": ["gguf", "q4_k_m"],
             "warning": "Running on CPU; model inference will be slow without GPU acceleration."
         }
-    
+
     if spec.vram_gb < fp16_vram_needed:
         return {
             "needs_quantization": True,
@@ -318,7 +318,7 @@ def recommend_model_strategy(model_name: str, accel: Optional[str]) -> dict:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_hardware.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_hardware.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -353,12 +353,12 @@ from colab_agent_bridge.core.session import SessionManager
 def test_session_manager_command_construction():
     config = BridgeConfig(colab_cli_path="/mock/colab")
     mgr = SessionManager(config=config)
-    
+
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="Session created: bridge-test\n", stderr="")
         res = mgr.new_session(session_name="bridge-test", gpu="A100", high_mem=True)
         assert res["success"] is True
-        
+
         args = mock_run.call_args[0][0]
         assert args[0] == "/mock/colab"
         assert "--auth=adc" in args
@@ -379,12 +379,12 @@ from colab_agent_bridge.core.executor import RemoteExecutor
 def test_executor_run_code():
     config = BridgeConfig(colab_cli_path="/mock/colab")
     executor = RemoteExecutor(config=config)
-    
+
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="hello from remote", stderr="")
         output = executor.run_code(session_name="test-s", code="print('hello from remote')")
         assert output["stdout"] == "hello from remote"
-        
+
         args = mock_run.call_args[0][0]
         assert "exec" in args
         assert "-s" in args
@@ -393,7 +393,7 @@ def test_executor_run_code():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_session.py tests/test_executor.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_session.py tests/test_executor.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.core.session')
 
 - [ ] **Step 3: Implement minimal code for session manager and executor**
@@ -438,7 +438,7 @@ class SessionManager:
         high_mem: bool = False
     ) -> Dict[str, Any]:
         cmd = self._build_base_cmd() + ["new", "-s", session_name]
-        
+
         if gpu:
             spec = validate_accelerator(gpu)
             if spec.is_gpu:
@@ -447,7 +447,7 @@ class SessionManager:
             spec = validate_accelerator(tpu)
             if spec.is_tpu:
                 cmd.extend(["--tpu", spec.name])
-                
+
         if high_mem:
             cmd.append("--high-mem")
 
@@ -536,7 +536,7 @@ class RemoteExecutor:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_session.py tests/test_executor.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_session.py tests/test_executor.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -573,7 +573,7 @@ def test_vllm_backend_script_generation():
     assert isinstance(backend, VLLMBackend)
     install_script = backend.generate_install_script()
     assert "vllm" in install_script
-    
+
     start_script = backend.generate_start_script(
         model_name="Qwen/Qwen2.5-Coder-7B-Instruct",
         port=8000,
@@ -589,7 +589,7 @@ def test_ollama_backend_script_generation():
     assert isinstance(backend, OllamaBackend)
     install_script = backend.generate_install_script()
     assert "ollama" in install_script.lower()
-    
+
     start_script = backend.generate_start_script(
         model_name="qwen2.5-coder:7b",
         port=8000
@@ -602,7 +602,7 @@ def test_llama_cpp_backend_script_generation():
     assert isinstance(backend, LlamaCppBackend)
     install_script = backend.generate_install_script()
     assert "llama-cpp-python" in install_script
-    
+
     start_script = backend.generate_start_script(
         model_name="TheBloke/deepseek-coder-6.7B-instruct-GGUF",
         port=8000
@@ -613,7 +613,7 @@ def test_llama_cpp_backend_script_generation():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_backends.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_backends.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.backends')
 
 - [ ] **Step 3: Implement minimal code for backends**
@@ -662,9 +662,9 @@ print("[vLLM] Installation completed.")
         quant = kwargs.get("quantization")
         max_len = kwargs.get("max_model_len", 8192)
         gpu_util = kwargs.get("gpu_memory_utilization", 0.90)
-        
+
         quant_flag = f"--quantization {quant}" if quant else ""
-        
+
         return f"""
 import subprocess, os, sys, time
 
@@ -789,7 +789,7 @@ def get_backend(name: str) -> BaseBackend:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_backends.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_backends.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -825,7 +825,7 @@ from colab_agent_bridge.tunnels import SSHTunnel, CloudflareTunnel
 def test_ssh_tunnel_command_generation():
     config = BridgeConfig(colab_cli_path="/mock/colab")
     tunnel = SSHTunnel(session_name="test-session", local_port=8000, remote_port=8000, config=config)
-    
+
     cmd = tunnel.build_ssh_command()
     assert "/mock/colab" in cmd
     assert "ssh" in cmd
@@ -843,7 +843,7 @@ def test_cloudflare_tunnel_script_generation():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_tunnels.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_tunnels.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.tunnels')
 
 - [ ] **Step 3: Implement minimal code for tunnels**
@@ -990,7 +990,7 @@ __all__ = ["BaseTunnel", "SSHTunnel", "CloudflareTunnel"]
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_tunnels.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_tunnels.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1049,7 +1049,7 @@ def test_colab_bridge_init():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_harness.py tests/test_bridge.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_harness.py tests/test_bridge.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.client')
 
 - [ ] **Step 3: Implement minimal code for client, harness, and health**
@@ -1064,7 +1064,7 @@ def check_health(endpoint_url: str, timeout_seconds: int = 600, poll_interval: i
     """Polls the /models or /health endpoint until the server is ready or timeout expires."""
     models_url = endpoint_url.rstrip("/") + "/models"
     start_time = time.time()
-    
+
     while time.time() - start_time < timeout_seconds:
         try:
             resp = requests.get(models_url, timeout=3)
@@ -1073,7 +1073,7 @@ def check_health(endpoint_url: str, timeout_seconds: int = 600, poll_interval: i
         except requests.RequestException:
             pass
         time.sleep(poll_interval)
-        
+
     return {"ready": False, "elapsed": round(time.time() - start_time, 1), "error": "Health check timed out."}
 
 def keepalive_ping(endpoint_url: str) -> bool:
@@ -1239,7 +1239,7 @@ __all__ = ["ColabBridge", "generate_agent_config", "check_health", "keepalive_pi
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_harness.py tests/test_bridge.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_harness.py tests/test_bridge.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1286,7 +1286,7 @@ def test_cli_recommend():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_cli.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_cli.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'colab_agent_bridge.cli')
 
 - [ ] **Step 3: Implement minimal code for CLI**
@@ -1318,7 +1318,7 @@ def status(session_name: Optional[str] = typer.Option(None, "-s", "--session", h
     config = get_config()
     mgr = SessionManager(config)
     auth_check = mgr.verify_auth()
-    
+
     if not auth_check["authenticated"]:
         console.print(Panel(f"[red]Authentication Issue:[/red] {auth_check.get('error')}\n\n[bold yellow]Remediation:[/bold yellow]\n{auth_check.get('remediation')}", title="Colab Auth Status"))
         raise typer.Exit(code=1)
@@ -1340,14 +1340,14 @@ def recommend(
     table = Table(title=f"Hardware Strategy for {model}")
     table.add_column("Property", style="cyan")
     table.add_column("Value", style="magenta")
-    
+
     table.add_row("Target Accelerator", gpu)
     table.add_row("Needs Quantization", str(rec["needs_quantization"]))
     table.add_row("Recommended Backend", rec.get("recommended_backend", "vllm"))
     table.add_row("Quantization Formats", ", ".join(rec.get("recommended_quantization", [])) or "None (FP16)")
     if rec.get("warning"):
         table.add_row("Advisory", f"[yellow]{rec['warning']}[/yellow]")
-        
+
     console.print(table)
 
 @app.command()
@@ -1373,7 +1373,7 @@ def up(
         tunnel_type=tunnel,
         local_port=port
     )
-    
+
     try:
         res = bridge.deploy(model_name=model, wait_for_ready=True, timeout=timeout)
         console.print(Panel(
@@ -1419,7 +1419,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_cli.py -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/test_cli.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1486,7 +1486,7 @@ Include:
 
 - [ ] **Step 6: Run full test suite to verify 100% passing tests**
 
-Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/ -v`  
+Run: `/run/media/parasaran/Dev/SDK/python/install/bin/pytest tests/ -v`
 Expected: All tests PASS.
 
 - [ ] **Step 7: Commit documentation and complete suite**
