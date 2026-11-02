@@ -8,8 +8,8 @@ on:
     inputs:
       tag_name:
         description: "Release tag name (e.g. v0.1.0)"
-        required: false
-        default: ""
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -41,10 +41,13 @@ jobs:
       - name: Determine tag name
         id: vars
         run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
-          else
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            echo "tag=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: Must provide tag_name when manually dispatching release on a branch"
+            exit 1
           fi
 
       - name: Create GitHub Release

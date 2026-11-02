@@ -386,7 +386,7 @@ pytest tests -v --cov=colab_agent_bridge
 
 # 2. Linting and formatting checks
 ruff check .
-ruff format --check .
+ruff format --check colab_agent_bridge tests
 
 # 3. Static type analysis
 mypy colab_agent_bridge

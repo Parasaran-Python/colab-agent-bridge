@@ -126,7 +126,7 @@ jobs:
           ./verify-env/bin/pip install --upgrade pip
           ./verify-env/bin/pip install dist/*.whl
           ./verify-env/bin/colab-bridge --help
-          ./verify-env/bin/colab-bridge --version || true
+          ./verify-env/bin/colab-bridge --version
 
       - name: Upload package distributions
         uses: actions/upload-artifact@v4

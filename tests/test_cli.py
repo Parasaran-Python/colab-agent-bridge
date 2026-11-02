@@ -18,6 +18,16 @@ def test_cli_help():
     assert "test" in result.stdout
 
 
+def test_cli_version():
+    res_long = runner.invoke(app, ["--version"])
+    assert res_long.exit_code == 0
+    assert "colab-bridge v" in res_long.stdout
+
+    res_short = runner.invoke(app, ["-v"])
+    assert res_short.exit_code == 0
+    assert "colab-bridge v" in res_short.stdout
+
+
 def test_cli_recommend():
     result = runner.invoke(app, ["recommend", "Qwen/Qwen2.5-Coder-32B-Instruct", "--gpu", "T4"])
     assert result.exit_code == 0

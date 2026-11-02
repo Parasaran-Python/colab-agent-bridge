@@ -35,6 +35,28 @@ app.add_typer(cluster_app, name="cluster")
 console = Console()
 
 
+def version_callback(value: bool) -> None:
+    if value:
+        from colab_agent_bridge import __version__
+
+        console.print(f"colab-bridge v{__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Show version and exit.",
+        callback=version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    pass
+
+
 # --- Profile Subcommands ---
 
 
